@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>冒烟测试用例管理</title>
+<script>
+// 主题防闪烁：CSS 前读取 localStorage
+(function(){
+  try {
+    var t = localStorage.getItem('smoke_meta_v1');
+    var theme = t ? JSON.parse(t).theme : null;
+    if (!theme) theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = theme;
+  } catch(e) {}
+})();
+</script>
+<style>
+:root{
+  --bg:#f4f6f9; --surface:#ffffff; --surface-2:#f7f9fc; --border:#dfe4ec;
+  --text:#1f2430; --text-secondary:#5b6577;
+  --primary:#1a73e8; --primary-hover:#1557b0; --primary-soft:#e8f0fe;
+  --hover:#f2f6fd; --danger:#cf3d32; --warning:#c56a0a; --info:#2563a9; --success:#17803d;
+  --radius:8px; --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 6px rgba(16,24,40,.04);
+  --topbar-h:56px; --sidebar-w:248px; --drawer-w:440px;
+  --font: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --font-num: "JetBrains Mono", Consolas, "Microsoft YaHei", monospace;
+}
+[data-theme="dark"]{
+  --bg:#14171a; --surface:#1c2024; --surface-2:#23282d; --border:#333a41;
+  --text:#e8eaed; --text-secondary:#9aa3ad;
+  --primary:#4c8dff; --primary-hover:#66a0ff; --primary-soft:#26364e;
+  --hover:#262c31; --danger:#f28b82; --warning:#f2b95c; --info:#8ab4f8; --success:#81c995;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 1px 8px rgba(0,0,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;color:var(--text)}
+::placeholder{color:var(--text-secondary);opacity:.75}
+::selection{background:var(--primary-soft)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
+input[type=text]:focus,textarea:focus,select:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+/* 数字列统一等宽字体 */
+.num,.bar-num,.c-time,#rowCount,.stat-card .num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+
+/* ===== Topbar ===== */
+#topbar{height:var(--topbar-h);background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-shadow:var(--shadow);position:relative;z-index:30}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.topbar-left h1{font-size:17px;font-weight:650;letter-spacing:.2px}
+.topbar-left svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.stat-chip{background:rgba(255,255,255,.16);border-radius:20px;padding:4px 12px;font-size:12.5px;display:flex;gap:6px;align-items:center}
+.stat-chip b{font-size:13.5px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:var(--radius);padding:7px 14px;font-size:13.5px;font-weight:500;transition:background .15s,border-color .15s,transform .08s,box-shadow .15s}
+.btn:hover{background:var(--hover);border-color:var(--primary)}
+.btn:active{transform:translateY(1px) scale(.985)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn:focus-visible,.btn-icon:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 1px 2px rgba(26,115,232,.25)}
+.btn-primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.btn-primary:active{box-shadow:none}
+.btn-danger{color:var(--danger);border-color:var(--danger)}
+.btn-danger:hover{background:rgba(207,61,50,.08)}
+.btn-sm{padding:4px 10px;font-size:12.5px;border-radius:6px}
+.btn-icon{width:32px;height:32px;padding:0;justify-content:center;background:transparent;border-color:transparent;color:inherit}
+.btn-icon:hover{background:rgba(255,255,255,.18);border-color:transparent}
+.topbar-right .btn{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff}
+.topbar-right .btn:hover{background:rgba(255,255,255,.2)}
+.topbar-right .btn-primary{background:#fff;border-color:#fff;color:var(--primary);font-weight:600}
+.topbar-right .btn-primary:hover{background:#e8f0fe}
+.cdn-badge{font-size:11.5px;padding:3px 8px;border-radius:12px;background:rgba(255,255,255,.14)}
+
+/* ===== Layout ===== */
+#layout{display:flex;height:calc(100vh - var(--topbar-h));position:relative;overflow:hidden}
+
+/* ===== Sidebar ===== */
+#sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.panel h3{font-size:11.5px;color:var(--text-secondary);font-weight:700;margin-bottom:12px;letter-spacing:.6px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.stat-card{padding:11px 14px;background:transparent}
+.stat-card+.stat-card{border-left:1px solid var(--border)}
+.stat-card:nth-child(n+3){border-top:1px solid var(--border)}
+.stat-card:nth-child(2){border-left:1px solid var(--border)}
+.stat-card .num{font-size:21px;font-weight:650;line-height:1.15;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.stat-card .lbl{font-size:11.5px;color:var(--text-secondary);margin-top:3px}
+.stat-card .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;cursor:pointer}
+.bar-row .bar{flex:1;height:16px;background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative}
+.bar-row .bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.bar-row .bar-lbl{width:92px;font-size:11.5px;color:var(--text-secondary);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-row .bar-num{width:44px;font-size:12px;font-weight:600;text-align:right}
+.bar-row.active .bar-lbl{color:var(--primary);font-weight:600}
+#moduleTree{font-size:13px}
+#moduleTree ul{list-style:none;padding-left:14px}
+#moduleTree li{margin:1px 0}
+.tree-item{display:flex;align-items:center;gap:5px;padding:4px 6px;border-radius:5px;cursor:pointer;user-select:none}
+.tree-item:hover{background:var(--hover)}
+.tree-item.active{background:var(--primary-soft);color:var(--primary);font-weight:600}
+.tree-item .tw{width:14px;text-align:center;color:var(--text-secondary);font-size:10px;flex-shrink:0}
+.tree-item .tn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-item .tc{font-size:11px;color:var(--text-secondary);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0 6px}
+
+/* ===== Content ===== */
+#content{flex:1;display:flex;flex-direction:column;min-width:0}
+#toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap}
+#toolbar input[type=search]{flex:1;min-width:200px;max-width:360px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2)}
+#toolbar input[type=search]:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+#toolbar select{padding:7px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2)}
+.checkbox-inline{display:inline-flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;user-select:none}
+#rowCount{color:var(--text-secondary);font-size:12.5px;margin-left:auto}
+#bulkBar{display:none;align-items:center;gap:8px;background:var(--primary-soft);padding:4px 12px;border-radius:var(--radius);font-size:13px;color:var(--primary)}
+#bulkBar.show{display:flex}
+#tableWrap{flex:1;overflow-y:auto;background:var(--surface)}
+#caseTable{width:100%;border-collapse:collapse}
+#caseTable thead{position:sticky;top:0;z-index:5}
+#caseTable th{background:var(--surface-2);border-bottom:1px solid var(--border);padding:10px 12px;font-size:11.5px;color:var(--text-secondary);text-align:left;font-weight:650;white-space:nowrap;letter-spacing:.3px}
+#caseTable td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+#caseTable tbody tr{cursor:pointer;transition:background .12s}
+#caseTable tbody tr:hover{background:var(--hover)}
+#caseTable tbody tr.selected{background:var(--primary-soft)}
+#caseTable thead::after{content:"";position:sticky;top:39px;display:block;height:4px;background:linear-gradient(rgba(16,24,40,.06),transparent);pointer-events:none}
+.c-title{font-weight:550;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .12s}
+tr:hover .c-title{color:var(--primary)}
+.c-num{font-family:var(--font-num);font-variant-numeric:tabular-nums;color:var(--text-secondary);font-size:12px;font-weight:600;white-space:nowrap}
+.c-num b{color:var(--text);font-weight:650}
+.c-module{font-size:12px;color:var(--text-secondary);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.badge-p0{background:rgba(217,48,37,.1);color:var(--danger)}
+.badge-p1{background:rgba(232,113,10,.12);color:var(--warning)}
+.badge-p2{background:rgba(30,111,200,.1);color:var(--info)}
+.badge-smoke{background:rgba(30,142,62,.12);color:var(--success)}
+.badge-nosmoke{background:var(--surface-2);color:var(--text-secondary)}
+.c-time{font-size:12px;color:var(--text-secondary);white-space:nowrap}
+.row-actions{display:flex;gap:2px;visibility:hidden}
+tr:hover .row-actions{visibility:visible}
+.row-actions button{background:none;border:none;color:var(--text-secondary);font-size:13px;padding:3px 5px;border-radius:4px}
+.row-actions button:hover{background:var(--hover);color:var(--primary)}
+.row-actions button.del:hover{color:var(--danger)}
+.checkbox-cell{width:36px;text-align:center}
+.empty-state{padding:70px 20px;text-align:center;color:var(--text-secondary)}
+.empty-state .icon{font-size:44px;margin-bottom:12px}
+.empty-state p{margin-bottom:14px}
+
+/* (旧抽屉样式已移除，编辑改为大模态 editMask) */
+
+/* ===== Modal / Toast ===== */
+#modalRoot .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(16,24,40,.16),0 2px 8px rgba(16,24,40,.08);width:min(640px,92vw);max-height:86vh;display:flex;flex-direction:column;overflow:hidden;animation:modalIn .18s ease}
+@keyframes modalIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:15.5px}
+.modal-body{padding:16px 20px;overflow-y:auto}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+#toastWrap{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{padding:10px 18px;border-radius:var(--radius);background:#323232;color:#fff;font-size:13.5px;box-shadow:0 4px 12px rgba(0,0,0,.3);animation:toastIn .2s;max-width:70vw}
+.toast.success{background:var(--success)}
+.toast.error{background:var(--danger)}
+.toast.warn{background:var(--warning)}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+
+/* ===== Export dialog ===== */
+.export-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.export-grid label{font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;font-weight:600}
+.export-grid input,.export-grid select{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2)}
+.md-preview{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:280px;overflow-y:auto}
+.import-preview table{width:100%;border-collapse:collapse;font-size:12px}
+.import-preview th,.import-preview td{border:1px solid var(--border);padding:5px 8px;text-align:left;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.import-preview th{background:var(--surface-2)}
+.radio-group{display:flex;gap:16px;margin-top:12px;font-size:13px}
+.pri-count{display:flex;gap:14px;margin-top:10px;font-size:12.5px;color:var(--text-secondary)}
+/* ===== 导出范围（勾选/冒烟） ===== */
+.exp-note{font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+.exp-scope{display:flex;gap:18px;margin:10px 0 12px;font-size:13px;flex-wrap:wrap}
+.exp-scope label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+.exp-scope label.disabled{opacity:.45;cursor:not-allowed}
+/* ===== 自动保存提示 ===== */
+.autosave-hint{font-size:12px;color:var(--text-secondary);opacity:0;transition:opacity .2s;align-self:center}
+.autosave-hint.show{opacity:1}
+.autosave-hint.ok{color:var(--success)}
+
+/* ===== 滚动条 ===== */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--text-secondary);background-clip:content-box;border:2px solid transparent}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===== 动效守卫：尊重系统减弱动效 ===== */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  .toast{animation:none}
+}
+
+/* ===== 编辑模态（步骤-预期配对） ===== */
+#editMask[hidden]{display:none}
+#editMask{position:fixed;inset:0;background:rgba(16,24,40,.52);display:flex;align-items:flex-start;justify-content:center;z-index:45;padding:2.5vh 16px;overflow-y:auto}
+.edit-modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 48px rgba(16,24,40,.22);width:min(1280px,96vw);display:flex;flex-direction:column;max-height:95vh;animation:modalIn .18s ease;margin:auto 0}
+.edit-head{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border)}
+.edit-head h2{font-size:16px;font-weight:650}
+.edit-body{flex:1;overflow-y:auto;padding:18px 24px}
+.edit-body label{display:block;font-size:12.5px;color:var(--text-secondary);margin:0 0 5px;font-weight:600}
+.edit-body input[type=text],.edit-body select,.edit-body textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);font-size:14px}
+.edit-body textarea{resize:vertical;line-height:1.55}
+.edit-body input[type=text]:focus,.edit-body textarea:focus,.edit-body select:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+.edit-foot{display:flex;gap:8px;padding:14px 22px;border-top:1px solid var(--border)}
+.edit-foot .spacer{flex:1}
+.meta-grid{display:grid;grid-template-columns:1fr 300px;gap:18px;margin-bottom:18px}
+.meta-main input,.meta-main textarea{margin-bottom:12px}
+#fTitle{font-size:15px;font-weight:550}
+.precond-chips{display:flex;flex-wrap:wrap;gap:6px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);margin-bottom:12px;max-height:150px;overflow-y:auto;align-content:flex-start}
+.smoke-meta-grid{display:grid;grid-template-columns:1.2fr 1.6fr 1.4fr;gap:8px;margin-bottom:12px}
+.precond-chips .pc-group{width:100%;font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:.4px;margin:2px 0 2px}
+.precond-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12.5px;color:var(--text);cursor:pointer;user-select:none;transition:all .12s}
+.precond-chip:hover{border-color:var(--primary);background:var(--hover)}
+.precond-chip.selected{background:var(--primary);border-color:var(--primary);color:#fff}
+.precond-chip.sel-none{background:var(--surface-2);border-color:var(--border);color:var(--text-secondary)}
+.steps-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.step-table{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.step-head,.step-row{display:grid;grid-template-columns:40px minmax(260px,1.1fr) 96px minmax(320px,1fr) 44px;gap:10px;align-items:start;padding:10px 14px}
+.step-head{background:var(--surface-2);font-size:11.5px;color:var(--text-secondary);font-weight:650;letter-spacing:.3px}
+.step-head .sh-num{text-align:center}
+.step-row{border-top:1px solid var(--border);align-items:center;transition:background .1s}
+.step-row:hover{background:var(--hover)}
+.sr-num{font-family:var(--font-num);font-variant-numeric:tabular-nums;color:var(--text-secondary);text-align:center;font-size:13px;font-weight:600;padding-top:8px}
+.step-row input.sr-text,.step-row select.sr-type{padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);width:100%;font-size:14px}
+.step-row select.sr-type{font-family:var(--mono);font-size:12.5px;color:var(--text)}
+.step-row textarea.sr-exp{padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);resize:vertical;line-height:1.55;font-size:14px;min-height:44px;width:100%}
+.sr-ops{display:flex;flex-direction:column;gap:2px;align-items:center}
+.sr-up,.sr-down,.sr-del{background:none;border:none;color:var(--text-secondary);font-size:13px;padding:3px 6px;border-radius:5px;cursor:pointer;line-height:1}
+.sr-up:hover,.sr-down:hover{background:var(--hover);color:var(--primary)}
+.sr-del:hover{color:var(--danger);background:rgba(207,61,50,.08)}
+
+@media (max-width:1100px){
+  #sidebar{display:none}
+}
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <div class="topbar-left">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2 3 7v6c0 4.4 3.6 8.4 9 9 5.4-.6 9-4.6 9-9V7l-9-5z" fill="rgba(255,255,255,.95)"/><path d="M8.5 12.5l2.4 2.4 4.6-4.8" stroke="#1a73e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <h1>冒烟测试用例管理</h1>
+  </div>
+  <div class="topbar-right">
+    <span class="stat-chip" id="chipTotal">用例 <b>0</b></span>
+    <span class="stat-chip" id="chipSmoke">冒烟 <b>0</b></span>
+    <span class="cdn-badge" id="cdnBadge" title="xlsx 解析库状态">xlsx: …</span>
+    <button class="btn btn-icon" id="btnTheme" title="切换主题">☾</button>
+    <button class="btn btn-sm" id="btnImport" title="导入用例：支持 /gen-smoke-test 产物 Markdown（可多选）与 xlsx">⇪ 导入</button>
+    <button class="btn btn-sm" id="btnExportSmoke" title="导出全部冒烟集合用例（aatf Markdown）">⇩ 冒烟导出</button>
+    <button class="btn btn-sm" id="btnExportXlsx" title="导出为 xlsx">⇩ xlsx</button>
+    <button class="btn btn-sm" id="btnExportAatf" title="导出 aatf Markdown（对话框内可选择范围：全部 / 仅勾选 / 仅冒烟）">⇩ Markdown</button>
+    <button class="btn btn-primary btn-sm" id="btnAdd">＋ 新增用例</button>
+  </div>
+</header>
+
+<div id="layout">
+  <aside id="sidebar">
+    <section class="panel" id="statsPanel">
+      <h3>统计</h3>
+      <div class="stat-grid" id="statCards"></div>
+      <div style="margin-top:12px" id="prioBars"></div>
+    </section>
+    <section class="panel">
+      <h3>模块分布 TOP5</h3>
+      <div id="moduleTop"></div>
+    </section>
+    <section class="panel">
+      <h3>模块</h3>
+      <div id="moduleTree"></div>
+    </section>
+  </aside>
+
+  <main id="content">
+    <div id="toolbar">
+      <input type="search" id="searchInput" placeholder="搜索用例标题…" autocomplete="off">
+      <select id="priorityFilter">
+        <option value="">全部优先级</option>
+        <option value="P0-High">P0-High</option>
+        <option value="P1-Middle">P1-Middle</option>
+        <option value="P2-Low">P2-Low</option>
+      </select>
+      <label class="checkbox-inline"><input type="checkbox" id="smokeOnlyFilter"> 仅冒烟集合</label>
+      <div id="bulkBar"><span id="bulkCount">已选 0 条</span>
+        <button class="btn btn-sm" id="bulkToSmoke">加入冒烟</button>
+        <button class="btn btn-sm" id="bulkUnsmoke">移出冒烟</button>
+        <button class="btn btn-sm btn-danger" id="bulkDelete">删除</button>
+        <button class="btn btn-sm" id="bulkClear">取消</button>
+      </div>
+      <span id="rowCount"></span>
+    </div>
+    <div id="tableWrap">
+      <table id="caseTable">
+        <thead><tr>
+          <th class="checkbox-cell"><input type="checkbox" id="checkAll" title="全选"></th>
+          <th>编号</th><th>标题</th><th>模块</th><th>优先级</th><th>冒烟</th><th>步骤</th><th>更新时间</th><th></th>
+        </tr></thead>
+        <tbody id="caseBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" hidden>
+        <div class="icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2 3 7v6c0 4.4 3.6 8.4 9 9 5.4-.6 9-4.6 9-9V7l-9-5z"/><path d="M8.5 12.5l2.4 2.4 4.6-4.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <p>暂无用例</p>
+        <p style="font-size:12.5px;margin-top:4px">可重新导入样本数据，或点击右上角「新增用例」编写</p>
+        <button class="btn btn-primary btn-sm" id="btnReseed">重新导入种子数据（272 条）</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="editMask" hidden>
+  <div class="edit-modal">
+    <div class="edit-head"><h2 id="drawerTitle">编辑用例</h2><button class="btn btn-icon" id="detailClose" title="关闭">✕</button></div>
+    <div class="edit-body">
+      <form id="caseForm" autocomplete="off">
+        <div class="meta-grid">
+          <div class="meta-main">
+            <label for="fTitle">标题 <span style="color:var(--danger)">*</span></label>
+            <input type="text" id="fTitle" placeholder="如：后置摄像头拍照" required>
+            <label for="fModule">模块路径</label>
+            <input type="text" id="fModule" list="moduleDatalist" placeholder="如：780 &gt; 整机测试 &gt; 功能 &gt; 相机">
+            <datalist id="moduleDatalist"></datalist>
+            <label>冒烟标记（导出首行，供 /run-smoke-test 定位；导入时自动带出）</label>
+            <div class="smoke-meta-grid">
+              <input type="text" id="fSmokePkg" placeholder="package：如 com.xxun.watch.friends">
+              <input type="text" id="fSmokeAct" placeholder="activity：LAUNCHER 全限定类名，无则 -">
+              <input type="text" id="fSmokeSrc" placeholder="src：源码目录，如 packages/apps/XunFriends">
+            </div>
+            <label>前置条件（可多选）</label>
+            <div class="precond-chips" id="precondChips"></div>
+          </div>
+          <div class="meta-side">
+            <label for="fPriority">优先级</label>
+            <select id="fPriority">
+              <option value="P0-High">P0-High</option>
+              <option value="P1-Middle">P1-Middle</option>
+              <option value="P2-Low">P2-Low</option>
+            </select>
+            <label class="checkbox-inline" style="margin-top:14px"><input type="checkbox" id="fInSmoke"> 加入冒烟集合</label>
+          </div>
+        </div>
+        <div class="steps-head">
+          <label>测试步骤与预期结果（一一对应）</label>
+          <button type="button" class="btn btn-sm" id="autoTagBtn">自动标注步骤类型</button>
+        </div>
+        <div class="step-table">
+          <div class="step-head">
+            <span class="sh-num">#</span><span>步骤</span><span>类型</span><span>预期结果（该步骤对应，每行一条）</span><span></span>
+          </div>
+          <div id="stepRows"></div>
+        </div>
+        <button type="button" class="btn btn-sm" id="addStepRow" style="margin-top:10px">＋ 添加步骤</button>
+      </form>
+    </div>
+    <div class="edit-foot">
+      <button class="btn" id="btnDuplicate">复制</button>
+      <button class="btn btn-danger" id="btnDelete">删除</button>
+      <span class="autosave-hint" id="autosaveHint" title="编辑内容已自动保存，无需手动点击「保存」"></span>
+      <span class="spacer"></span>
+      <button class="btn" id="btnCancel">取消</button>
+      <button class="btn btn-primary" id="btnSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastWrap"></div>
+<div id="modalRoot"></div>
+
+<script>
+const SEED = [["后置摄像头拍照","相机","P0-High","不支持自动对焦","1、点击屏幕\n2、拍摄完成后进入相册查看","1.1、拍摄当前画面。屏幕icon和顶部提示消失\n\n1.2、音效正常\n\n1.3、拍摄完成后停留0.5秒预览照片，0.5秒后回到待拍摄状态。预览图片缩小的动画与UI动效一致\n\n2、相册中保存刚拍摄的照片，无丢失或重复\"",0],["前置摄像头拍照","相机","P0-High","不支持自动对焦","1、点击屏幕\n2、拍摄完成后进入相册查看","1.1、拍摄当前画面。屏幕icon和顶部提示消失\n1.2、音效正常\n1.3、拍摄完成后停留0.5秒预览照片，0.5秒后回到待拍摄状态。预览图片缩小的动画与UI动效一致\n2、相册中保存刚拍摄的照片，无丢失或重复",0],["前置摄像头录像","相机","P0-High","不支持自动对焦","1、点击屏幕\n2、开始录制3秒后观察界面\n3、拍摄完成后进入相册查看","1.1、录制当前画面。屏幕icon和顶部提示消失\n1.2、音效正常\n1.3、顶部显示录像倒计时30S\n1.4、右侧显示对应的焦段\n1.5、底部显示停止录像按钮\n2、“变焦”和“停止录像”icon隐藏， 仅保留倒计时，点击屏幕icon再显示\n3、相册中保存刚拍摄的视频，无丢失或重复",0],["后置摄像头录像","相机","P0-High","不支持自动对焦","1、点击屏幕\n2、开始录制3秒后观察界面\n3、拍摄完成后进入相册查看","1.1、录制当前画面。屏幕icon和顶部提示消失\n1.2、音效正常\n1.3、顶部显示录像倒计时30S\n1.4、右侧显示对应的焦段\n1.5、底部显示停止录像按钮\n2、“变焦”和“停止录像”icon隐藏， 仅保留倒计时，点击屏幕icon再显示\n3、相册中保存刚拍摄的视频，无丢失或重复",0],["拍照画面变焦","相机","P0-High","无","1、拍照/录像界面点击变焦图标\n2、切换2X 焦段\n3、切换3X 焦段\n4、切换4X 焦段","1、出现1X、2X、3X、4X 选项，默认1X，点击循环切换\n2、画面放大至2倍，拍摄后图片显示正常\n3、画面放大至3倍，拍摄后图片显示正常\n4、画面放大至4倍，拍摄后图片显示正常",0],["前后摄像头切换","相机","P0-High","手表已翻盖","1、手表翻盖，点击切换前后摄像头icon/向上或向下滑动屏幕\n2、再次点击切换前后摄像头icon/上下滑动屏幕","1、可以正常切换摄像头",0],["进入相册页-有照片/视频","相册","P0-High","有照片/视频","1、点击相册应用","1、进入相册，以日为单位展示照片/视频，照片/视频 2*2宫格显示，顶部展示轮播点",0],["大图浏览照片","相册","P0-High","有照片/视频","1、相册列表页面点击照片\n2、点击屏幕\n3、双击屏幕\n4、照片放大后左右滑动照片后再切回","1、进入照片详情页面，返回和设置icon隐藏，toast提示“双击屏幕可放大”\n2、返回和设置icon出现\n3、照片放大\n4、照片回到原有尺寸",0],["确定单项删除照片","相册","P0-High","有照片/视频","1、大图浏览照片，点击右上角设置按钮，点击删除按钮\n2、删除照片二次确认页面点击√按钮","1、显示照片图标、文案提示“确认删除照片”，√和×按钮\n2、toast提示“照片已删除”，相册列表中无此照片，后面的照片/视频向前补位",0],["分享照片-网络正常","相册","P0-High","网络正常","1、大图浏览照片/视频，点击右上角设置按钮，点击分享按钮","1、进入选择分享对象界面，列表与联系人列表保持一致",0],["群聊中确定发送照片","相册","P0-High","有照片/视频","1、进入联系人私聊，点击“+”号，进入拍照模式，点击屏幕拍照\n2、再次点击屏幕\n3、拍摄完成后点击发送按钮\n4、进入相册查看","1、拍摄完成，屏幕出现“取消”和“发送”按钮\n2、按钮消失\n3、照片成功发送给对应联系人，app端能收到照片，照片显示正常\n4、刚刚拍摄的照片保存到相册",0],["视频查看","相册","P0-High","无","1、录制视频结束后，进入相册","1、录像直接保存相册，画面、声音、时长与实际一致",0],["暂停播放和继续播放","相册","P0-High","有照片/视频","1、播放视频时点击屏幕\n2、暂停播放时点击播放按钮","1、播放暂停，出现“播放”、“返回”和“设置”icon\n2、播放继续，icon消失",0],["单项删除视频","相册","P0-High","有照片/视频","1、视频暂停播放页面，点击右上角设置按钮，点击删除按钮\n2、视频播放结束后，点击设置按钮，点击删除按钮","1&2、显示视频图标、文案提示“确认删除视频”，√和×按钮\n点击√可以删除成功",0],["碰一碰-添加好友","联系人-添加好友","P0-High","需要未加好友的手表进入碰一碰","1、点击“碰一碰”交友\n2、交友成功\n3、点击\"√\"","1、手表展示手表碰一碰动画，同时语音提示：正在发起交友哦 请将手表互相靠近\n2、提示：\"交友成功\"，下方有√按钮\n3、返回添加好友界面",0],["好友输入验证，交友成功","联系人-交友","P0-High","无","1、好友输入本机的验证码\n2、点击\"×\"\n3、点击\"√\"","1、本机应收到邀请，弹窗显示用户头像（目前只支持默认头像，不支持自定义头像）和昵称，下方显示×和√按钮\n2、返回验证码页面\n3、 提示：\"你与(对方昵称)成为好友了\"下方显示√按钮",0],["验证码交友-接受邀请-交友成功","联系人-交友","P0-High","无","1.输入正确的验证码，点击确认\n2.一直不点击√\n3.点击刷新按钮","1.应有弹窗提示：验证成功，等待邀请人确认\n√按钮\n2.一分钟后，本机应有弹窗提示：验证超时，点击重试\n刷新按钮\n3.跳转到输入界面",0],["聊天独立应用","聊天-信息","P0-High","已绑定，有SIM卡","1、进入聊天应用\n2、点击联系人进入，分别发送文字、语音、图片信息\n3、点击家庭群进入后发送表情、视频、常用语、相机拍照后发送\n4、点击添加好友，碰一碰及验证码交友","1、显示联系人、家庭群、添加好友\n2、3、聊天信息发送接收正常无异常\n4、交友成功",0],["卸载聊天","聊天","P0-High","无","1、应用列表界面长按聊天；","1、步骤1，聊天为内置应用，不可被卸载；",0],["联系人-列表","联系人-列表","P0-High","有组合家庭群\n已绑定","1、表盘页左滑切换到联系人\n2、上下滑动列表","1、可进入联系人列表页\n依次显示：\n-独立联系人\n- 添加好友\n关于联系人\n2、可以正常滑动",0],["私聊-收到文字","联系人-消息","P0-High","不在聊天详情页","1、收到群聊文字消息","1、通知中心应有通知:应有铃声和震动（以系统设置为准），联系人列表、联系人详情应有角标",0],["收到-私聊语音","联系人-消息","P0-High","不在聊天详情页","通过通知中心进入聊天详情，点击播放语音消息","可以播放成功，未读变为已读，未读小红点消失，\n联系人列表、联系人详情角标应移除\n通知中心应移除",0],["群聊-聊天详情页","联系人-消息","P0-High","已收到新消息","收到语音消息后，聊天详情页界面检查\n收到非语音消息，聊天详情页检查","1.聊天详情页显示语音时长、消息状态（未读有红点）、左上角群聊名称、每个联系人的名称、以及我、录音按钮和+按钮\n2.聊天详情页显示消息内容、左上角群聊名称、消息上面联系人的名称、以及我、录音按钮和+按钮",0],["收到-私聊视频","联系人-消息","P0-High","不在当前聊天详情页","1、手表收到私聊视频","1、通知中心应有通知:应有铃声和震动（以系统设置为准），联系人列表、联系人详情应有角标",0],["发送语音后，检查状态","发送语音消息","P0-High","已绑定，且有网络","给联系人发送语音，检查消息状态","1.应显示消息时长，对方未读应显示未读状态\n2.对方已读应显示已读状态",0],["群聊/私聊-发送常用语","群聊","P0-High","已绑定，且有网络","1、聊天界面点击右下角加号，点击常用语\n2、点击任意一条文字","1、显示预设文字，包括\n-我到家啦\n- 我到学校啦\n- 我出去玩啦\n- 我去同学家玩啦\n- 我在做作业\n- 我在学校门口等你\n- 你快来了吗？\n- 你在哪里呀？\n2、均能正常发送，显示正常",0],["群聊/私聊-发送表情","群聊","P0-High","已绑定，且有网络","1、点击群聊中\"+\"\n2、右滑","1、跳转到更多页，表情、拍照、相册、常用语\n2、退出当前页，返回到上层菜单",0],["群聊/私聊-拍照","群聊","P0-High","已绑定，且有网络","1、点击群聊中\"+\"选择\"拍照\"\n2、点击屏幕任意位置\n3.点击取消\n4.点击发送","1、应打开相机，打开前置相机\n2、拍照完成，进入照片预览页，显示取消、发送按钮\n3.取消发送，返回相机拍摄界面\n4.将照片发送给联系人，并跳转至【聊天界面】照片自动保存到相册",0],["群聊/私聊拍视频","群聊","P0-High","已绑定，且有网络","1、在拍照界面，切换到录像模式\n2、点击屏幕任意区域\n3、点击取消\n4、点击发送","1.可以进行视频录制\n2.录制完成视频自动播放，底部显示取消、发送按钮\n3、视频取消发送，返回相机录像模式\n4、将视频发送给联系人，并跳转至【聊天界面】\n视频发送过程中，有加载动效，发送完成，加载动效小时",0],["群聊/私聊-发送相册","群聊","P0-High","相册有照片和视频","1、聊天界面点击右下角加号，点击相册\n2、选择任意一张照片\n3、点击取消\n4、点击发送","1、打开相册\n2、照片放大，底部显示取消、发送按钮\n3、返回相册列表，照片取消发送\n4、将视频发送给联系人，回到聊天详情页",0],["收到联系人短信","短信","P0-High","已绑定，有SIM卡","收到联系人短信","1.通知中心应有通知，短信应显示角标\n短信列表音应显示小红点\n2.列表页应展示联系人的昵称",0],["电话-拨号盘","电话","P0-High","1、APP授权拨号盘使用；","1、进入拨号盘依次点击键盘中，数字1-9，+号，删除，拨号等按钮；","1、步骤1，拨号盘所有控件都能正常点击，点击后数字，特殊字符都能正常添加在号码区域中，点击删除能删除一位已输入内容，点击拨号能拨出目前输入的内容；",0],["通话记录显示检查","电话-通话记录","P0-High","1、测试机绑定APP；\n2、有通话记录；","1、测试机点击电话应用，检查有通话记录时界面显示情况；","1、步骤1，通话记录号码显示正确，若号码存在于联系人中显示为联系人名称；通话日期/通话时间，呼入/呼出状态图标，与实际情况一致；未接通状态显示为红色；",0],["电话-拨号","拨打电话","P0-High","1、测试机绑定APP；\n2、有通话记录；","1、测试机点击电话应用进入\n2、点击拨号盘输入号码呼出电话\n3、点击通话记录电话","步骤2、3呼出电话建立正常，通话声音无异常",0],["呼叫过程中挂断","联系人-电话","P0-High","呼叫中","1.呼叫中，点击挂断按钮","可以挂断，挂断后，停留在联系人详情页",0],["对方来电-一直未接听","联系人-电话","P0-High","无","1、对方来电，手表未接","1、通知中心应有提示：来自XX的未接来电",0],["对方先挂断","联系人-电话","P0-High","已接通","1、通话过程中","1、可以挂断成功，挂断后，停留在联系人详情页",0],["接听电话","联系人-电话","P0-High","无","来电界面点击接听按钮","电话被接通，进入通话页面：\n展示通话音量ICON，默认最大、 展示联系人头像、联系人名称、通话时长（00：00：00）、“挂断”按钮",0],["对方来电-手表拒绝","联系人-电话","P0-High","无","对方来电","可以拒接成功",0],["灭屏状态下收到来电","联系人-电话","P0-High","无","1.灭屏状态下收到来电\n2.不接听，等对方挂断","1.应亮屏，有来电界面，\n2.对方挂断后，通知中心应有提示，联系人列表页应有角标，联系人详情页应有角标",0],["亮屏状态下收到来电","联系人-电话","P0-High","无","1.非表盘页收到来电\n2.不接听，等对方挂断","1.收到来电应有来电界面，\n2.对方挂断后，通知中心应有提示，联系人列表页应有角标，联系人详情页应有角标",0],["视频通话-已连接WiFi呼叫联系人","联系人-视频通话","P0-High","已连接WiFi","1、联系人列表，选择其中一个联系人，点击\"视频通话\"图标\n2、点击\"挂断\"按钮","1、进入视频通话拨号中页面，全屏显示联系人头像、联系人名称及“挂断”按钮\n文案展示：正在呼叫\n2、应有弹窗提示：通话已结束，点击√按钮，应返回联系人详情",0],["视频通话-未连接WiFi呼叫联系人","联系人-视频通话","P0-High","未连接WiFi\n已开启移动网络","1.拨打视频通话\n2.弹窗内点击X\n3.在弹窗内点击√","1.应有弹窗提示：没有连接WiFi，是否直接用数据流量视频通话，X和√按钮\n2.弹窗消失，回到上层页面\n3.进入视频通话呼叫页面：全屏显示联系人头像、联系人名称及“挂断”按钮\n文案展示：正在呼叫",0],["视频通话-收到视频来电","联系人-视频通话","P0-High","已连接WiFi","1.收到对方的视频来电\n2.点击接听","1.应显示详细来电信息： 页面展示联系人头像（全屏）、联系人名称、“挂断”按钮、“接听”按钮\n2.显示接通中，接通之后，进入视频通话详情页",0],["通话中界面检查","联系人-视频通话","P0-High","无","1、视频通话已接通\n2、5秒未操作","1、界面显示：全屏显示双方的画面、音量按钮、、通话时长（00：00）、挂断按钮、切换前摄/侧摄(默认对方摄像头为大图，手表摄像头为小图)\n2、隐藏音量图标、通话时长、挂断图标，再次点击屏幕显示",0],["视频通话-收到视频来电接听","联系人-视频通话","P0-High","已连接WiFi","1.收到对方的视频来电\n2.点击接听","1.应显示详细来电信息： 页面展示联系人头像（全屏）、联系人名称、“挂断”按钮、“接听”按钮\n2.显示接通中，接通之后，进入视频通话详情页",0],["视频通话-收到视频来电拒接","联系人-视频通话","P0-High","无","1.收到对方的视频来电，挂断\n2.点击弹窗内的√","1应有弹窗提示：通话已结束  和√按钮\n2.弹窗关闭，回到表盘页\n3.主动挂断，通知中心不显示未接视频通话、\n联系人列表和联系人详情页均不显示角标",0],["视频通话-已接通，画面切换","联系人-视频通话","P0-High","已接通","1、视频通话中，右上角点击画中画切换\n2.多次切换画面（10次以上）","1、切换手表画面为大图，对方摄像头为右上角小图画面，可循环切换（默认手表画面为小图）\n2.画面切换正常，不会出现页面卡主的情况，内容显示正常",0],["视频通话-手表挂断","联系人-视频通话","P0-High","已接通","1、手表先挂断\n2、点击\"√\"按钮","1、弹窗提示\"通话已结束\"\n2、弹窗关闭，返回上一界面",0],["视频通话-对方挂断","联系人-视频通话","P0-High","无","1、固件端已成功拨打视频，APP接听后再挂断\n2、点击\"√\"按钮","1、弹窗提示\"对方已挂断\"\n2、弹窗关闭，返回上一界面",0],["密码锁&视频通话交互","联系人-视频通话","P0-High","1、手表已设置密码锁\n2、X：表端设置的自动灭屏时长","1、表端解锁后收到来自APP端的视频/语音电话\n2、等待X秒手表自动灭屏后，表端按压侧键亮屏","1、手表可成功接听/挂断\n2、正常进入密码锁屏页面",0],["跳绳-入口","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、运动列表中点击跳绳\n2、点击”知道了“确定进入","1、每天首次进入时触发佩戴手表提示\n2、显示时间、“GO”按钮、运动名称（跳绳）、“目标设置”按钮",0],["设置一项目标","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、分别设置时长，距离，卡路里\n2、同时设置时长，距离，卡路里\n3、进入目标设置列表内点击每个目标右边的灰点再返回","1、没被设置的目标项默认显示无，设置的目标会显示目标值并返回设置列表界面\n2、时长，距离，卡路里目标均可被设置，返回设置列表界面，运动目标显示最近修改的目标\n3、灰点被点亮，变为蓝色，手动返回上一级菜单，运动目标显示选中目标",0],["跳绳-运动中-上滑","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、上滑\n2、再次上滑","1、页面元素：\n当前时间、频率（个/分）\n2、回到运动中主页面",0],["跳绳-运动暂停","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、跳绳过程中，按压侧键","1、进入运动暂停页面，语音播报“运动暂停”，显示继续和结束按钮\n1.1、倒计时、进度条停止，运动数据不会发生变化",0],["健走-设定无目标","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、设定无目标，点击GO按钮，进入健走运动中界面\n2、运动界面上滑","1、页面元素：\nGPS 图标、当前时间、运动用时、完成里程数（不满1公里以米为单位，满1公里以公里为单位）、速度（公里/小时）、心率（硬件支持心率监测功能页面展示）、心率对应的区间（热身、燃脂、有氧、无氧、极限）、心率区间对应的进度条\n2、页面元素展示：\nGPS图标、当前时间、消耗卡路里（单位千卡）、步频（单位步/分）、步数、平均配速",0],["健走-运动暂停","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、健走过程中，右划页面\n2、长按结束运动按钮\n3、右划页面 or 点击继续运动按钮","1、页面显示：暂停按钮，长按结束按钮，音量按钮\n2、按钮此时显示高亮，其他按钮置灰无法点击，页面定位标签置灰（位于页面最下方的两个小圆点），页面下方显示长按结束文案，按钮周围有动画转圈显示且当动画转完一圈后，语音提示运动暂停，运动暂停按钮变成运动继续按钮\n3、运动暂停按钮变成运动继续按钮",0],["健走-运动暂停","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、健走过程中，按压侧键","1、进入运动暂停页面，语音播报“运动暂停”，显示：继续、结束、音量按钮\n1.1、倒计时、进度条停止，运动数据不会发生变化",0],["运动结束后有网","整机测试 > 功能 > 运动 > 运动训练","P0-High","不设置运动目标","1、开启网络选择一个运动训练的运动并点击“GO”开启运动\n2、继续运动1分钟+后按侧键并长按结束按钮结束运动\n3、查看固件运动记录跟APP端运动记录\n注：测试需要遍历所有运动，包括户外跑，健走，户外步行（780修改为健走），户外骑行，跳绳，仰卧起坐，其他运动则任选一个运动即可","1、进入运动中页面，运动数据继续记录\n2、弹出运动记录页\n3、固件运动记录显示正常，APP端跟固件端运动记录保持一致",0],["表端运动完成之后无网","整机测试 > 功能 > 运动 > 运动训练","P0-High","不设置运动目标","1、断开网络后选择一个运动训练的运动并点击“GO”开启运动\n2、继续运动1分钟+后按侧键并长按结束按钮结束运动\n注：测试需要遍历所有运动，包括户外跑，健走，户外步行（780修改为健走），户外骑行，跳绳，仰卧起坐，其他运动则任选一个运动即可","1、进入运动中页面，运动数据继续记录\n2、弹出提示界面：\n标题“运动数据未同步”，正文“当前网络异常，运动记录将于网络恢复后自动上传至家长手机应用”，“我知道了”按钮",0],["检查重置运动按钮","整机测试 > 功能 > 运动 > 运动训练","P0-High","默认运动状态","1、进入运动的运动目标设置界面\n2、选择任意设置（包括屏幕常亮）后进入到该运动设置页\n注：测试需要遍历所有运动，包括户外跑，健走，户外步行（780修改为健走），户外骑行，跳绳，仰卧起坐，其他运动则任选一个运动即可","1、不出现重置运动弹窗\n2、出现重置运动弹窗",0],["重置运动","整机测试 > 功能 > 运动 > 运动训练","P0-High","设置过运动，非默认状态下","1、进入运动的运动目标设置界面，点击运动重置设置按钮\n2、勾选”x“\n3、勾选”√“\n注：测试需要遍历所有运动，包括户外跑，健走，户外步行（780修改为健走），户外骑行，跳绳，仰卧起坐，其他运动则任选一个运动即可","1、弹出”确认重置所有运动设置？“弹窗并且出现”x“和”√“按钮\n2、返回到该运动目标设置界面，该运动内所有设置过的目标，功能仍然保持不变\n3、返回到运动目标设置界面，该运动内所有设置过的目标，功能等全部恢复默认状态，重置运动按钮消失。",0],["屏幕常亮按钮位置","整机测试 > 功能 > 运动 > 运动训练","P0-High","无","1、选择运动训练任意运动\n2、进入该运动设置页面","2、页面有屏幕常亮开关",0],["屏幕常亮","整机测试 > 功能 > 运动 > 运动训练","P0-High","1、选择一个运动\n2、进入该运动设置开启屏幕常亮功能\n注：测试需要遍历所有运动，包括户外跑，健走，户外步行，户外骑行，跳绳，仰卧起坐，其他运动则任选一个运动即可","1、开启该运动并且等待一分钟\n2、进入另一个运动设置查看屏幕常亮是否打开","1、屏幕常亮，运动仍在继续\n2、屏幕常亮功能关闭",0],["运动记录-有记录","整机测试 > 功能 > 运动 > 运动记录","P0-High","有10条以上运动记录","1、点击运动-运动记录","1、跳转到运动记录界面\n2、页面展示：\n标题栏：< 运动记录、当前时间、运动记录列表",0],["运动开始倒计时","整机测试 > 功能 > 运动 > 体育测试","P0-High","无","1、点击GO按钮\n2、检查语音提示\n3、过程左右滑动屏幕","1、进入运动中界面\n2、语音提示：运动开始\n3、左右滑动会来回切换到暂停界面和运动界面",0],["1000米跑-成绩标准滑动控件","整机测试 > 功能 > 运动 > 体育测试","P0-High","基础信息设置为\n性别选择：男\n年级设置：7年级","1、滑动控件\n2、检查信息","1、用时、成绩和成绩标签随滑动控件变化而变化\n2、数据符合国家学生体质健康标准",0],["运动暂停","整机测试 > 功能 > 运动 > 体育测试","P0-High","基础信息设置为\n性别选择：女\n年级设置：8年级","1、点击GO按钮\n2、左右滑动界面\n3、短按power键\n4、检查暂停界面","1、进入运动界面\n2、左右滑动会来回切换到暂停界面和运动界面\n3、进入运动暂停页面\n4、展示文案：测试仍在进行中继续加油、“结束”按钮",0],["运动暂停灭屏power键功能","整机测试 > 功能 > 运动 > 体育测试","P0-High","运动中","1、短按power键\n2、等待灭屏\n3、短按power键","1、进入运动暂停页面\n2、手表灭屏\n3、手表亮屏，处于运动暂停页面（运动时间结束的话出现成绩界面或成绩详情界面）",0],["基础信息页面","整机测试 > 功能 > 运动 > 体育测试","P0-High","无","1、体育测试首页左滑进入基础信息页面","1、跳转到基础信息界面\n界面内容：\n性别选择 “>”按钮\n年级设置 “>”按钮",0],["基础信息页面-性别选择","整机测试 > 功能 > 运动 > 体育测试","P0-High","无","1、点击性别选择 “>”按钮\n2、点击女","1、跳转到性别选择界面\n2、跳转到基础信息页面",0],["基础信息页面-保存年级设置","整机测试 > 功能 > 运动 > 体育测试","P0-High","无","1、点击年级设置 “>”按钮\n2、滑动滚轮选择9年级\n3、点击确定按钮","1、跳转到年级设置界面\n2、滚轮停留在9年级\n3、返回基础信息界面",0],["首次进入血氧-已开启自动检测开关","整机测试 > 功能 > 健康监测 > 血氧","P0-High","APP端开启血氧自动检测开关\n已授权","1、每天首次进入血氧APP\n2、点击\"知道了\"","1、 展示佩戴示意图\n弹窗提示：请偏紧佩戴\n避开腕骨至少一指距离\n以便数据正常监测\n“知道了”按钮\n同时有动画显示\n2、进入【血氧-首页】页",0],["血氧-单次测量","整机测试 > 功能 > 健康监测 > 血氧","P0-High","1、血氧-单次测量准备","1、血氧首页点击测量按钮","1、进入测量准备页面，显示佩戴示意图、佩戴动画、\n文案提醒\"请偏紧佩戴，屏幕朝上，保持静止\"\n2、倒计时3秒动画，3、2、1\n3、倒计时结束，进入测量页面",0],["启动测量","整机测试 > 功能 > 健康监测 > 心率","P0-High","APP端未开启连续心率监测开关","打开心率应用","进入开始测量页面：\n中部显示心率正在测量的动画，下方文案描述“正在测量 请保持静止”\n底部显示：关于心率\n采集时间10秒左右\n10秒之后，会显示当前心率数值：比如83次/分，（最终值不固定，根据传感器的数据显示）\n32秒左右，会显示结果页（结果页的数据会跟随传感器变化）\n2.测量过程中不应自动灭屏\n结果页会自动灭屏（灭屏时间最长不超过30S）",0],["测量完成","整机测试 > 功能 > 健康监测 > 心率","P0-High","无","测量完成后显示结果页，结果页检查：","1. 顶部展示文案：当前心率（跟随传感器的数值变化）\n2. 中部显示心率数值，单位为次/分\n3. 底部展示按钮文案“重新测量”",0],["播放暂停电台","780 > 整机测试 > 功能 > 小爱同学","P0-High","连接网络/网络正常","1.右滑返回\n2.点击小球进行query：暂停\n3.点击小球再进行query：继续播放","1.返回到query页面（首页），电台在后台播放，右下角显示播放页入口\n2播放暂停，小球进入收音状态，正确识别query，并回答，电台暂停，右下角显示播放页入口\n3.电台播放继续",0],["进入小爱同学","780 > 整机测试 > 功能 > 小爱同学","P0-High","连接网络/网络正常","1.表盘界面右滑，点击小爱同学\n2.输入正确的结果\n3.点击同意\n4.点击跳过\n5.首次进入小爱应用","1.进入小爱同学界面，应显示：家长验证\n2.点击正确结果跳转隐私政策-二维码 同意按钮\n3.进入登录小米账号二维码界面，\n4.正常进入小爱应用\n5.应显示：功能引导列表",0],["语音问答","780 > 整机测试 > 功能 > 小爱同学","P0-High","网络连接/电量充足","1.输入任意语音（天气/时间/闲聊/音乐等）\n2，设置单一闹钟/周期性闹钟是否成功\n3，在小爱中执行“打开wifi”\n4.小爱同学内执行“打电话给XX…（家庭联系人）\n5.小爱同学内执行“打电话给XX…（自定义联系人）\n6.提问baike类问题，如小米公司，苹果是什么\n7.提问person类问题，如习近平是谁\n8.提问如我要听歌，我要听小红帽的故事","1.跟手表可以随机闲聊，并且回答的内容于询问的内容要符合\n2，单一闹钟在设置菜单里查看已经创建，并在正确的时间响铃。\n周期性闹钟是否支持需要根据不同的语音服务商支持的功能决定。\n3，可以成功开启WiFi\n4.可以呼出电话\n5.可以呼出电话，自定义联系人（自定义头像）均无异常\n6.可以正常回答\n7.可以正常回答\n8.可以正常回答",0],["音频播放界面-暂停","780 > 整机测试 > 功能 > 小爱同学","P0-High","网络连接/电量充足\n正在播放","1.手动点击暂停","1.正常暂停",0],["音频播放界面-播放","780 > 整机测试 > 功能 > 小爱同学","P0-High","网络连接/电量充足\n音乐已暂停","1.手动点击播放","1.正常播放",0],["进入小爱有声","780 > 整机测试 > 功能 > 有声畅听","P0-High","连接网络/网络正常","1.首次点击进入小爱有声","1.进入小爱有声界面\n2.弹出家长验证，点击正确结果跳转隐私页面\n3.扫描二维码能够正常查看儿童手表小爱语音助手隐私政策\n4.点击同意后进入权限获取页面，点击同意后跳转至扫码登陆小米账号页面\n5.点击跳过/扫码登陆后正常进入小爱有声",0],["连续三次输入错误密码","780 > 整机测试 > 功能 > 支付宝应用锁","P0-High","网络正常","1、第一次和第二次输入4位错误密码\n2、第三次输入4位错误密码","1、提示：\"密码错误\"，输入区清空\n2、提示\"密码错误，再次错误应用锁定\" ，输入区清空",0],["10分钟内累计错误4次","780 > 整机测试 > 功能 > 支付宝应用锁","P0-High","网络正常","1、10分钟内，累计输入四次错误密码\n2、点击好的按钮","1、提示：\"支付宝已锁定，请10分钟以后重试，家长在手机应用可修改密码\"、好的按钮\n2、返回3/*3应用列表",0],["锁定已满10分钟","780 > 整机测试 > 功能 > 支付宝应用锁","P0-High","网络正常","1、10分钟内输入四次错误密码，锁定倒计时结束后，再次点击支付宝","1、正常进入支付宝应用锁输入密码界面",0],["输入正确密码","780 > 整机测试 > 功能 > 支付宝应用锁","P0-High","网络正常","1、输入4位正确密码","1、直接进入应用",0],["今日任务更新","780 > 整机测试 > 功能 > 背单词","P0-High","无","1、APP端修改每天学习词数，表端重新进入背单词应用\n2、点击开始背诵按钮","1、今日任务中单词数量更新，与APP端保持一致\n2、最上方进度条的总词数更新，与APP端保持一致",0],["开始听写","780 > 整机测试 > 功能 > 背单词","P0-High","无","1、背单词首页点击单词听写，进入作业列表，选择作业，跳转至单词听写界面","1.1、显示：< 单词听写、设置按钮、听写单词进度条(x/xx)、喇叭播放图标、暂停听写\n1.2、音频正常、清晰",0],["翻盖作业拍照","780 > 整机测试 > 功能 > 背单词","P0-High","手表未翻盖","1、点击作业拍照按钮\n2、手表翻盖后再次点击作业拍照按钮","1、toast 提示”请翻盖手表打开摄像头“\n2、直接跳转到拍照页面，不会进入相机应用",0],["发送成功","780 > 整机测试 > 功能 > 背单词","P0-High","无","1、拍摄作业完成后点击发送按钮，作业发送成功\n2、点击完成按钮","1、提示:发送成功 您已发送作业给家长批改，重拍、完成按钮\n2、返回单词听写主界面",0],["应用入口","780 > 整机测试 > 功能 > 二维码","P0-High","网络正常\n已绑定","1、时钟界面上滑\n2、点击二维码应用","1、3x3的应用列表\n2、进入手表二维码，提示\"使用前请先扫码绑定手表\"",0],["点击banner跳转落地页","780 > 整机测试 > 功能 > 表情商店","P0-High","已同意隐私权限弹窗授权\n网络正常","1、查看首页banner\n2、点击banner\n3、banner落地页右滑/点击返回按钮","1、banner-上限8张轮播（后台可配置关闭或更换）\n2、跳转到【banner落地页】,banner与banner落地页相对应\n2.1、banner落地页包含： 返回按钮、标题、当前时间、商品列表\n3、返回应用首页",0],["点击商品跳转整套表情","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常","1、点击商品列表的商品","1、 点击跳转到【整套表情】",0],["替换表情包页面","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常\n聊天面板表情包数量已满4个","1、查看【替换表情包】界面显示","1、界面显示 ：返回按钮、标题 替换表情包、当前时间、四个表情包大图上下滑动依次显示、替换按钮\n1.1、四个表情包默认选中最后一个，点击其他的可以切换",0],["金额付款页面","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常\n付费表情","1、点击付费表情页的金额付款按钮（¥xx）","1、跳转【二维码-金额付款】界面，中间显示二维码，底部显示征求家长代付按钮，toast文案提示”请用支付宝或微信扫码支付“，3S后消失",0],["从聊天中进入表情相关页面","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常\n已安装【表情商店】","1、点击手表给其他联系人发送的表情\n2、点击其他好友给手表发送的表情","1&2、跳转到表情相关页面，页面包含：返回按钮、表情名称（0-7个字，不可超过一行）、当前时间、表情图片、更多表情按钮",0],["分享免费表情","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常\n已添加好友","1、单个免费表情预览页，点击分享按钮\n2、点击列表的任一联系人\n3、联系人聊天界面查看","1、调起联系人列表\n2、toast：转发成功，回到原页面\n3、显示刚刚分享的表情，对方成功接收",0],["整理表情页面","780 > 整机测试 > 功能 > 表情商店","P0-High","已添单个表情","1、【添加的单个表情】页面，点击整理","1、返回按钮和标题消失，整理图标变成取消图标，表情变成可选中状态，按选中顺序标序号、出现移动到顶端按钮、删除（X）按钮，X为选中个数",0],["确认移除表情","780 > 整机测试 > 功能 > 表情商店","P0-High","已添加整套表情","1、【整套表情删除确认】弹窗点击确认按钮","1、选择移除的表情到【已拥有的表情】列表中",0],["删除单个表情","780 > 整机测试 > 功能 > 表情商店","P0-High","已添加单个表情","1、点击整理按钮，选中添加的单个表情页的某个表情\n2、点击删除","1、出现移至顶端、删除两个按钮\n2、弹窗文案提示“单个表情删除后需要重新添加，是否删除？”下方显示取消、确认按钮",0],["金额付款征求家长代付","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常\n付费表情","1、【二维码-金额付款】页面，点击征求家长代付按钮","1、跳转到【代付请求发送成功】页面，页面文案：”代付请求发送成功“ 底部联系家长按钮",0],["收藏免费表情","780 > 整机测试 > 功能 > 表情商店","P0-High","网络正常\n免费表情","1、单个表情预览页，点击下方添加至我的喜欢按钮\n2、进入我的表情，点击添加的单个表情","1、点击后爱心变红，并toast：已添加至“我的喜欢”\n2、列表中显示刚刚收藏的表情",0],["删除表盘","780 > 整机测试 > 功能 > 表盘切换","P0-High","已下载表盘","1.切换到已下载表盘\n2.选择删除按钮\n2.1选择x\n2.2选择√\n2.3弹窗页面按侧键","1.显示垃圾桶（删除）\n2.应弹出弹窗提示：删除表盘，X √\n2.1关闭弹窗，表盘未删除，回到当前选择的表盘页面\n2.2关闭弹窗，表盘被删除，页面定位到前一个表盘\n2.3关闭弹窗，页面定位到当前选择的表盘页面\n弹窗关闭，回到表盘页",0],["表盘商店进入/退出","780 > 整机测试 > 功能 > 表盘切换","P0-High","无","1.已安装表盘商店，在表盘切换中左右滑动到表盘商店入口，点击进入\n2.表盘商店右滑","1.进入表盘商店应用\n2.应退出表盘商店，返回表盘界面",0],["使用系统表盘","780 > 整机测试 > 功能 > 表盘切换","P0-High","无","1.打开表盘切换页\n2.选择一个系统表盘，点击该表盘或点击侧键\n3.检查桌面表盘\n4.循环步骤1.2.3直至全部系统表盘均使用","1.进入表盘切换页\n2.返回桌面，桌面表盘变更成选择的表盘\n3.表盘背景图、时间/日期信息、小控件（如：运动步数、电池电量）无异常\n4.系统表盘均无异常",0],["动态表盘切换","780 > 整机测试 > 功能 > 表盘切换","P0-High","手表存在动态表盘","1.手表进入到表盘切换页，任意选择一个动态表盘进行预览\n2.选择预览的动态表盘为系统表盘显示","1.动态表盘可以成功预览（显示静态的图片）\n2.切换动态表盘成功，退出到系统表盘与之前预览动态一致",0],["管理员发起解绑请求","780 > 整机测试 > 功能 > 激活/解绑(新)","P1-Middle","手表已绑定","1、管理员发起解绑请求","1、手表出现解绑动画，手表本地&服务器数据重置",0],["绑定手表成功","780 > 整机测试 > 功能 > 激活/解绑(新)","P0-High","已完成新手教程","1、绑定手表成功","1、进入时钟界面",0],["健康圆环-入口","780 > 整机测试 > 功能 > 健康圆环","P0-High","已绑定手表\n已打开权限","1.表盘页左滑两次","1.进入健康圆环页面",0],["健康圆环-详细数据页检查","780 > 整机测试 > 功能 > 健康圆环","P0-High","1、已绑定手表","1、在健康圆环首页，点击\"任一圆环进入列表页\"","1、进入健康圆环详细数据页，显示：步行、锻炼、活动\n1.1：步行：XX/XX步（实际步数/目标步数）\n锻炼：X/X小时（实际活动时间/目标活动时间）\n活动：X/X小时\n距离：XX公里 （根据步行和其他运动换算成距离，单位为公里，小数点最多2位）\n消耗：XX千卡（根据步行和其他运动换算成消耗，取整数）",0],["3*3应用列表进入","780 > 整机测试 > 功能 > 朋友圈","P1-Middle","已绑定\n好友和自己均未发布过动态","1、时钟界面，上滑\n2、点击朋友圈进入","1、进入3/*3应用列表\n2、进入朋友圈主页，显示 标题 朋友圈、当前时间、头像、手表昵称、编辑按钮、0动态、X好友（X与好友数量保持一致）、暂无动态、关于朋友圈 >",0],["从快捷应用中进入","780 > 整机测试 > 功能 > 朋友圈","P1-Middle","已绑定\n好友和自己均未未发布过动态\n快捷应用添加朋友圈","1、点击朋友圈进入","1、进入朋友圈主页，显示头像、手表昵称、编辑按钮、0动态、X好友（X与好友数量保持一致）、暂无动态",0],["移动网络下发布文字","780 > 整机测试 > 功能 > 朋友圈","P0-High","插入SIM卡","1、添加界面，点击文字\n2、长按录音按钮录音\n3、文字确认界面，再次点击长按录音按钮\n4、文字确认界面，点击√按钮\n5、发布界面，点击\"+\"添加按钮，并重新录音\n6、发布界面，点击\"×\"删除按钮\n7、发布界面，点击\"√\"确定按钮","1、跳转至文字界面，显示：长按录音和录音按钮\n2、显示录音动画松手可识别为文字，进入文字确认界面\n3、长按语音按钮可以覆盖重新输入，再进入文字确认界面\n4、进入发布界面显示识别的文字\n5、录音的文字覆盖原文字\n6、可移除全部文字\n7、成功发布朋友圈",0],["发布表情","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表","1、添加界面选择表情\n2、表情界面，点击表情\n3、发布界面，点击\"×\"删除按钮\n4、发布界面，点击\"+\"添加按钮，选择表情\n5、发布界面，点击\"√\"确定按钮","1、进入表情界面，3/*3列表显示表情\n2、跳转至发布界面，显示选择的表情\n3、移除选择的表情\n4、再次添加表情直接覆盖\n5、即可成功发布朋友圈",0],["发布视频朋友圈","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表","1、添加界面选择拍照\n2、拍照界面，右滑，点击录制按钮，录制视频完成后点击结束按钮\n3、预览界面，点击取消/完成按钮\n4、发布界面，点击\"×\"删除按钮\n5、发布界面，点击\"+\"添加按钮，再拍一张视频\n6、发布界面，点击\"√\"确定按钮\n7、点击查看自己发布的视频内容","1、进入拍照应用，拍照/录像\n2、显示预览画面，取消、完成按钮\n3、1、点击取消返回视频\n3、2、点击完成，进入发布界面，显示拍摄的视频\n4、移除视频\n5、直接覆盖原视频\n6、即可成功发布朋友圈\n7、可以正常预览",0],["发布组合（文字+表情+拍照+相册）","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表","1、添加要发布的内容（文字、表情、照片可同时添加，但每一类只可添加一样）后点击右下角的确定按钮\n2、发布成功","1、显示：等待动画，正在发布朋友圈\n2、1、显示手表头像、昵称、发布时间、发布内容，\n2、2、发布的小视频可播放",0],["发布详情","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表","1、自己发布一条朋友圈\n2、点击朋友圈内容（非点赞位置）\n3、上下滑动详情界面","1、可正常发布\n2、进入朋友圈详情界面，\n2、1、评论&赞，无内容时不显示计数，视频自动播放（显示不全为正常现象），不循环播放\n3、上下滑动可查看内容、点赞、评论、删除按钮",0],["发布评论","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表\n2、添加数个好友","1、发布评论录音成功，点击√按钮\n2、检查评论显示逻辑","1、toast提示：“正在发布评论”，评论发布成功后跳转到朋友圈详情页\n2、评论按照时间倒序排列，最新的评论在最顶部显示评论数量较之前增加1",0],["删除评论","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表\n2、朋友圈已评论","1、滑动至评论列表，点击删除评论（只有自己评论的才会有删除评论）\n2、点击√按钮\n3、点击X按钮","1、弹出\"删除评论\"界面\n2、1、提示：\"评论已删除”且内容详情页和朋友圈列表页同步删除评论；评论数量较之前减少1\n2、2、当列表无评论时，隐藏评论列表\n3、评论不删除，弹窗关闭",0],["WiFi下发布文字","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表\n连接WiFi","1、添加界面，点击文字\n2、长按录音按钮录音（10次）\n3、文字确认界面，再次点击长按录音按钮\n4、文字确认界面，点击√按钮\n5、发布界面，点击\"+\"添加按钮，并重新录音\n6、发布界面，点击\"×\"删除按钮\n7、发布界面，点击\"√\"确定按钮","1、跳转至文字界面，显示：长按录音和录音按钮\n2、显示录音动画松手可识别为文字，进入文字确认界面\n3、长按语音按钮可以覆盖重新输入，再次进入文字确认界面\n4、进入发布界面显示识别的文字\n5、录音的文字覆盖原文字\n6、移除全部文字\n7、成功发布朋友圈",0],["发布照片朋友圈","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表","1、添加界面选择拍照\n2、拍照界面，点击屏幕\n3、预览界面，点击取消/完成按钮\n4、发布界面，点击\"×\"删除按钮\n5、发布界面，点击\"+\"添加按钮，再拍一张照片\n6、发布界面，点击\"√\"确定按钮\n7、点击查看自己发布的照片","1、进入拍照应用，拍照/录像\n2、显示预览画面，取消、完成按钮\n3、1、点击取消返回拍照\n3、2、点击完成，进入发布界面，显示拍摄的照片\n4、移除照片\n5、直接覆盖原照片\n6、即可成功发布朋友圈\n7、可以正常预览",0],["查看好友发布的视频/照片","780 > 整机测试 > 功能 > 朋友圈","P0-High","已有好友发布视频/照片","1、打开朋友圈\n2、并点击该视频/照片","1、可以拉取到该视频/照片，以视频/照片形态展示\n2、点击后进入该条朋友圈详情页，可以正常播放/展示，退出",0],["点赞","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表且\n添加多个好友1、2","1、自己发送一条朋友圈消息\n2、手表2给自己点赞\n3、手表1给自己点赞\n4、手表2取消点赞\n5、手表2与自己解除好友关系","1、其他手表可以正常查看\n2、均可以看到点赞数增加，并展示在点赞列表内，列表根据时间倒序排列，且每个用户针对一条朋友圈只能点赞一次\n3、可以点赞成功\n4、应可以取消点赞，点赞变为灰色，数量也随之减少\n5、手表1的点赞数量不变",0],["删除朋友圈","780 > 整机测试 > 功能 > 朋友圈","P0-High","1、已绑定手表\n2、有发布的朋友圈","1、选择要删除的朋友圈，点击下方的删除按钮\n1、1删除弹窗点击X\n1、2删除弹窗点击√","1、弹出\"删除朋友圈\"界面，\n1、1应不删除，回到朋友圈详情页\n1、2toast提示：朋友圈已删除，回到朋友圈首页\n且朋友圈列表同步删除",0],["课程表详情","780 > 整机测试 > 功能 > 课程表","P0-High","当天有课","1、课程表详情页\n2、点击星期栏\"左右切换按钮\"\n3、上下滑动\n4、右滑","1、标题 课程表、右上角显示时间、星期栏、切换按钮、第一节-第X节的课程（X为APP端设置的课程节数）、关于课程表 >，界面与UI一致\n2、循环显示星期一-星期日（周末没课时不显示）\n3、课程列表正常滑动显示，星期栏一行显示冻结\n4、返回3/*3应用列表",0],["3*3应用列表进入","780 > 整机测试 > 功能 > 课程表","P1-Middle","无","1、时钟界面，上滑\n2、点击课程表进入","1、3/*3应用列表\n2、进入课程表主页",0],["从小组件中进入","780 > 整机测试 > 功能 > 课程表","P1-Middle","小组件中已添加课程表","1、点击小组件中的课程表","1、进入课程表应用",0],["小组件中进入","780 > 整机测试 > 功能 > 课程表","P1-Middle","无","1、小组件中添加课程表\n2、点击课程表进入","1、进入课程表主页",0],["获取天气成功","780 > 整机测试 > 功能 > 天气","P0-High","网络正常","1、点击天气进入\n2、获取天气成功\n3、天气首页上滑\n4、天气第二页下滑\n5、天气第二页右滑","1、显示等待动画以及\"正在获取天气信息\"文案\n2、显示当前的天气信息：当前定位、温度、天气状态图标、天气类型、最低/最高温度，与UI一致\n3、显示未来天气、时间、明天&后天的天气、温度、天气状态图标、最低/最高温度、关于天气 >\n4、返回天气主页\n5、可不经过天气主页直接退出应用",0],["3*3应用列表进入","780 > 整机测试 > 功能 > 天气","P1-Middle","无","1、时钟界面，上滑\n2、点击天气进入","1、3/*3应用列表\n2、进入天气主页",0],["从快捷应用中进入","780 > 整机测试 > 功能 > 天气","P1-Middle","无","1、快捷应用添加天气\n2、主页左滑至天气页面","1、显示天气主页，显示当前地区的天气情况",0],["小组件中进入","780 > 整机测试 > 功能 > 天气","P1-Middle","无","1、小组件中添加天气\n2、点击天气进入","1、进入天气主页",0],["限时折扣-购买页","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","无","表盘预览页，点击购买","有loading界面，loading完成，进入待付二维码页面，toast提示：请用支付宝或微信扫码支付",0],["购买界面-发送代付请求","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","无","1、购买表盘，在二维码界面点击“征求家长代付按钮”\n2、再次进入购买表盘","1、应进入：代付请求发送成功、“联系家长”按钮\n2、代付按钮置灰（按钮文案同时变成“等待家长处理”）",0],["搜索页操作-点击标签","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","无","4、搜索页点击标签","4、进入具体词条页面",0],["分享表盘","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","无","1、表盘预览页，点击右上角分享按钮\n2.选择任意好友分享\n3.弹窗点击好的","1、跳转到：正在查询好友界面\n2.提示：正在分享好友，分享成功后，弹出：分享成功弹窗\n3.弹窗消失，回到表盘预览页（缩略图）",0],["设置相册表盘为当前表盘","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","相册存在照片","选择一张最新添加的相册表盘，点击底部√按钮","可以设置为当前表盘，设置成功后，表盘预览页底部显示使用中\n回到“我的表盘”界面，添加的相册表盘右上角显示状态：使用中\n相册表盘列表页当前表盘：状态显示使用中\n我的表盘-相册表盘位，显示已设置的表盘。后面显示+按钮",0],["删除相册表盘","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","已有相册表盘","1、点击删除按钮\n2、已选择表盘时\n3、批量选择表盘\n4、点击下方“删除”按钮，删除选中的表盘\n5、选择√\n6、选择×","1、进入删除状态，最上面文案显示：删除表盘\n2、最上面文案显示：删除表盘\n2.1 出现删除按钮\n3、选中和未选中状态不一样\n4、出现删除确认弹窗，显示”删除×个表盘“\n5、显示正在删除，删除后返回相册表盘页，选择的表盘从列表中消失\n6、回到删除选择页",0],["商品兑换页面显示","780 > 整机测试 > 功能 > 表盘商店（无点券）","P0-High","无","1、兑换中心下拉\n2、点击商品兑换-更多按钮","1.显示商品兑换，更多按钮\n2、进入商品兑换，可兑换的商品列表：表盘\n每个占位图下面显示晶石数量",0],["移动运营商数据流量下载升级","780 > 整机测试 > 功能 > OTA","P1-Middle","1.服务器部署升级\n2.设备插入支持使用的移动SIM卡","1.插入移动运营商SIM卡\n2.进入设置-关于，下载升级设备（各运营商下载升级不低于五次）","设备使用各运营商数据流量可正常下载固件安装包，选择升级可正常升级至新版本，无异常升级失败、升级过程死机。\n升级成功后各运营商网络连接正常",0],["电量大于65%APP端强制升级","780 > 整机测试 > 功能 > OTA","P0-High","已配置新版本\n电量大于65%\n未关机","APP端点击“升级”","1.固件端可以立刻下载，（下载完成后通知中心有下载完成的通知）\n2.会立即进行升级",0],["电量大于25%充电中自动升级","780 > 整机测试 > 功能 > OTA","P0-High","APP端开启固件自动更新\n电量≥25%","下载完成后，手表充电","会立即进行升级（不判断时间）",0],["仅WLAN下升级","780 > 整机测试 > 功能 > OTA","P1-Middle","APP端开启固件自动更新\nAPP端开启仅在WLAN下升级","手表关闭WLAN","不应自动升级（第二天早上检查）",0],["升级成功","780 > 整机测试 > 功能 > OTA","P0-High","无","1，安装完成（升级成功）\n2，点击弹窗内的好的","1，升级成功后，自动重启手表\n重启后，自动弹出升级成功的弹窗\n2，弹窗关闭回到表盘页",0],["电量大于65%，手动下载完成-安装","780 > 整机测试 > 功能 > OTA","P0-High","电量大于65%\n未充电","1.一直在设备信息页面，下载完成，检查当前页面和通知中心\n2.点击“点击安装”按钮","1.显示下载完成，和“点击安装”按钮；\n通知中心有通知：手表升级\n新版本已下载完成，点击升级\n2.进入升级界面：显示：\n正在升级手表\n请勿按侧键\n可能损坏手表\n升级进度条",0],["下载过程中取消","780 > 整机测试 > 功能 > OTA","P1-Middle","1、已开启下载；2、已连接网络且网络正常","下载过程中点击取消下载\n点击X\n点击√","弹出弹窗：是否取消下载？X和√按钮\n1.弹窗消失，返回进度条下载\n2.弹窗消失，取消下载，回到设备信息页\n显示有新版本，下载进度条变成“下载更新”按钮",0],["后台下载版本后安装","780 > 整机测试 > 功能 > OTA","P0-High","电量大于65%","1.后台下载版本完成后，点击设备信息页面“点击安装”按钮","1.进入升级界面，显示：\n正在升级手表\n请勿按侧键\n可能损坏手表\n升级进度条",0],["有新版本检测","780 > 整机测试 > 功能 > OTA","P0-High","已配置新版本","1.进入设置-我的设备-设备信息，进行新版本检测","1.当前页文案显示：有新版本，按钮变成“下载更新”",0],["使用流量下载版本","780 > 整机测试 > 功能 > OTA","P0-High","未连接WiFi\n已开启移动数据","使用流量下载固件弹窗页\n1.点击X\n2.点击√","1.关闭弹窗，回到设备信息页：显示有新版本\n2.弹窗关闭，进入设备信息页，文案显示“正在下载中XX...”按钮变成“取消下载”",0],["电量大于65%，手动下载完成-安装","780 > 整机测试 > 功能 > OTA","P0-High","电量大于65%\n未充电","1.一直在设备信息页面，下载完成，检查当前页面和通知中心\n2.点击“点击安装”按钮","1.显示下载完成，和“点击安装”按钮；\n通知中心有通知：手表升级\n新版本已下载完成，点击升级\n2.进入升级界面：显示：\n正在升级手表\n请勿按侧键\n可能损坏手表\n升级进度条",0],["在后台下载并安装","780 > 整机测试 > 功能 > OTA","P0-High","电量大于65%","2.下载完成后，点击设备信息页面“点击安装”按钮","3.进入升级界面，显示：\n正在升级手表\n请勿按侧键\n可能损坏手表\n升级进度条",0],["闹钟-进入","780 > 整机测试 > 功能 > 闹钟","P0-High","无","1.手表待机页面上滑进入应用列表，点击闹钟","1.应打开闹钟APP\n首次进入应无闹钟：文案提示：“未设置闹钟”底部+按钮",0],["频率设置多选，检查闹钟是否设置成功","780 > 整机测试 > 功能 > 闹钟","P0-High","无","1.频率设置多选：每周一、每周二、每周三、每周四、每周五、每周六、每周日\n比如：选择周一、周二，点击√\n2.设置成功后，检查闹钟是否能响起","1.可以设置成功，自动跳转到闹钟列表页，显示已经设置的闹钟\n时间和频率都应显示正确\n2.设置成功后，在对应时间段内，应能响起",0],["删除闹钟","780 > 整机测试 > 功能 > 闹钟","P0-High","闹钟编辑页","1、点击\"删除\"按钮","1、闹钟删除，返回闹钟设置",0],["开启闹钟后检查是否生效","780 > 整机测试 > 功能 > 闹钟","P0-High","无","1、闹钟已关闭，点击开启\n2.开启后检查闹钟是否生效","1、应能打开闹钟\n2、应能生效",0],["闹钟弹窗检查","780 > 整机测试 > 功能 > 闹钟","P1-Middle","无","1、在闹钟时间段内\n检查闹钟弹窗提醒\n2、点击停止按钮","1、应弹出闹钟\n当前闹钟、闹钟时间、铃声提醒（提醒方式根据设置而定），铃声循环播放\n2、关闭闹钟",0],["点击应用列表中的应用","780 > 整机测试 > 功能 > 应用商店 > 首页","P0-High","网络正常\n已绑定\n已授权","1、点击列表中的所有应用","1、成功跳转至对应应用详情页",0],["进入搜索页","780 > 整机测试 > 功能 > 应用商店 > 搜索页","P1-Middle","网络正常\n已绑定\n已授权","1、首页点击搜索框","1、进入搜索页，显示标题 <搜索、当前时间、输入框（提示文字“请语音输入”）、删除按钮、按住说话按钮、【√】按钮",0],["语音识别","780 > 整机测试 > 功能 > 应用商店 > 搜索页","P0-High","网络正常\n已绑定\n已授权","1、长按【按住说话】按钮，并开始说话\n2、松开按钮\n3、点击【√】按钮","1、出现语音识别动画\n2、动画消失，页面提示“正在识别中...”，识别完成后输入框显示已识别到的文本\n3、进入搜索结果页",0],["识别失败","780 > 整机测试 > 功能 > 应用商店 > 语音录入","P2-Low","网络正常\n已绑定\n已授权","1、按住按钮后不说话","1、识别失败，toast提示“未识别语音”",0],["删除文本","780 > 整机测试 > 功能 > 应用商店 > 语音录入","P1-Middle","网络正常\n已绑定\n已授权","1、语音识别结束页面点击删除按钮","1、文本全部清空",0],["第二页","780 > 整机测试 > 功能 > 应用商店 > 第二页","P0-High","网络正常\n已绑定\n已授权","1、应用商店首页左滑","1、进入分类页、显示 标题应用商店、当前时间、热门推荐、教育学习、休闲益智、音乐故事、生活社交、系统工具（目前为以上6个分类，后续会根据实际业务增加分类）\n、定位豆（此时位于第二个）、与UI保持一致",0],["进入热门推荐列表","780 > 整机测试 > 功能 > 应用商店 > 第二页-分类列表操作","P0-High","网络正常\n已绑定\n已授权","1、第二页点击热门推荐","1、跳转到对应的分类页，显示<热门推荐、当前时间、应用列表（每个应用包括：应用icon、应用名称、应用状态、应用评分），上滑查看所有应用",0],["点击应用列表中的应用","780 > 整机测试 > 功能 > 应用商店 > 第二页-分类列表操作","P0-High","网络正常\n已绑定\n已授权","1、点击列表中的所有应用","1、成功跳转至对应应用详情页",0],["第三页","780 > 整机测试 > 功能 > 应用商店 > 我的页面","P0-High","网络正常\n已绑定\n已授权","1、应用商店首页左滑两次","1、进入我的页面，显示标题 应用商店、当前时间、应用升级、本机应用、下载管理、定位豆（此时位于第三个）",0],["有升级应用进入应用升级","780 > 整机测试 > 功能 > 应用商店 > 应用升级","P0-High","研发端配置多个应用的最新版本","1、研发端配置3个应用的最新版本\n2.1、一个应用不升级\n2.2、一个应用升级中\n2.3、一个应用APP端发起升级指令，但在下载队列中排队下载\n3、查看表端应用升级界面","2.1、该应用状态显示升级\n2.2、该应用状态显示升级中\n2.3、该应用状态显示等待升级\n每个应用包括应用icon、应用名称、应用状态、应用评分",0],["从应用升级页面进入应用详情页","780 > 整机测试 > 功能 > 应用商店 > 应用升级","P1-Middle","研发端配置多个应用的最新版本","1、点击应用升级页的应用","1、跳转到对应应用的详情页",0],["已连接WLAN升级","780 > 整机测试 > 功能 > 应用商店 > 应用升级","P0-High","1、WLAN已连接","1、点击有新版本的应用，应用详情页点击升级按钮","1、应用加入下载队列",0],["流量下载未开启弹窗","780 > 整机测试 > 功能 > 应用商店 > 应用升级","P0-High","1、家长手机应用关闭【允许使用流量下载应用】\n2、使用数据流量","1、流量下载未开启弹窗页面点击WLAN下载按钮\n2、连接WLAN","1.1、toast提示：连接WLAN后自动下载\n1.2、自动跳转到应用详情页，按钮文案由安装变为等待升级\n2、应用自动下载",0],["有升级应用进入本机应用","780 > 整机测试 > 功能 > 应用商店 > 本机应用","P0-High","已安装多个应用","1、研发端配置3个应用的最新版本（一个应用不升级、一个应用升级中、一个应用APP端发起升级指令，但在下载队列中排队下载）\n查看表端本机应用界面","1、展示手表已安装（包含应用状态为已安装、升级、等待升级、升级中）的所有应用\n1.1、每个应用包括应用icon、应用名称、应用状态、应用评分\n1.2、按照应用名称首字母排序",0],["安装请求弹窗","780 > 整机测试 > 功能 > 应用商店 > 应用安装-未开启自行下载权限","P0-High","家长手机应用关闭【允许手表下载安装新应用】开关\n电量大于20%","1、点击任意一个未安装的应用，应用详情页点击安装按钮","1、出现安装请求弹窗，弹窗文案：需要家长协助，是否向家长发送安装请求？、√和×按钮",0],["手表首次发送安装请求","780 > 整机测试 > 功能 > 应用商店 > 应用安装-未开启自行下载权限","P1-Middle","家长手机应用关闭【允许手表下载安装新应用】开关\n电量大于20%","1、安装请求页面点击发送按钮\n2、弹窗页面点击好的按钮","1、出现弹窗，文案【应用名称】安装请求已通知【管理员】，好的按钮\n2、弹窗消失，返回应用详情页\n3、APP端收到安装请求消息，点击“前往安装”应跳转至应用详情页",0],["APP端同意安装","780 > 整机测试 > 功能 > 应用商店 > 应用安装-未开启自行下载权限","P0-High","家长手机应用关闭【允许手表下载安装新应用】开关\n手表已连接WLAN\n电量大于20%","1、APP端同意表端的安装请求，查看表端应用状态","1、应用加入下载队列",0],["确定使用流量下载","780 > 整机测试 > 功能 > 应用商店 > 应用安装-开启自行下载权限，开启流量下载","P0-High","1、家长手机应用开启【允许手表下载安装新应用】开关\n2、家长手机应用开启【允许使用流量下载应用】\n3、使用数据流量\n电量大于20%","1、流量提醒弹窗点击确定按钮","1、返回应用详情页，该应用加入下载队列",0],["已连接WLAN下载","780 > 整机测试 > 功能 > 应用商店 > 应用安装-开启自行下载权限，开启流量下载","P0-High","1、家长手机应用开启【允许手表下载安装新应用】开关\n2、家长手机应用开启【允许使用流量下载应用】\n3、使用数据流量\n电量大于20%","1、下载方式选择弹窗点击WLAN下载","1.1、返回应用详情页并走下载安装流程，加入下载队列并等待WLAN；\n1.2、toast提示：连接WLAN后自动下载",0],["下载管理页点击下载中状态按钮","780 > 整机测试 > 功能 > 应用商店 > 下载管理","P1-Middle","网络正常\n已绑定\n已授权","1、下载管理页点击应用的下载中状态按钮","1、状态变为暂停中，图标也改变，与UI一致\n。应用分类列表页、Launcher页、应用详情页状态和图标同步变化",0],["有应用下载进入下载管理","780 > 整机测试 > 功能 > 应用商店 > 其他","P0-High","1、有应用在安装\n2、有应用在等待升级\n3、有应用在下载中\n4、有应用暂停\n5、有应用在等待下载","1、查看表端下载管理界面","1、显示标题、当前时间、应用列表\n每个应用包括 应用icon、应用名称、应用状态：安装中/等待升级/下载中/暂停中/等待下载、应用状态icon",0],["后台下载","780 > 整机测试 > 功能 > 应用商店 > 后台下载","P0-High","1、已连接网络","1、应用商店退至手表后台","1、下载任务和安装任务应继续执行",0],["应用详情页卸载应用弹窗","780 > 整机测试 > 功能 > 应用商店 > 应用卸载","P0-High","1、已连接网络","1、进入已安装有更新、已安装无更新的应用详情页，点击卸载按钮","1、弹窗提示 卸载 { 应用名称 }，⽂案：卸载后，该应⽤所有数据将会被清除，确认卸载？ 取消和卸载按钮",0],["应用详情页确定卸载应用","780 > 整机测试 > 功能 > 应用商店 > 应用卸载","P0-High","1、已连接网络","1、卸载弹窗点击确定按钮","1、进入卸载中⻚⾯，该⻚⾯展⽰卸载中动画\n和“卸载中...”⽂案",0],["应用详情页卸载成功","780 > 整机测试 > 功能 > 应用商店 > 应用卸载","P0-High","1、已连接网络","1、应用卸载成功","1、toast提⽰“卸载成功”，并返回应⽤详情⻚，\n⻚⾯按钮切换为“安装”按钮",0],["Launcher页卸载","780 > 整机测试 > 功能 > 应用商店 > 应用卸载","P0-High","1、已绑定","1、应用列表页面长按应用图标\n2、点击按钮\n3、弹窗内点击 卸载按钮","1、右上角出现卸载按钮\n2、出现卸载弹窗\n3、卸载应用",0],["早起弹窗","780 > 整机测试 > 功能 > 日程提醒","P0-High","无","1、APP端添加早起提醒\n2、点击\"停止\"\n3、一直不点击\n4.提醒弹窗右滑","1、闹钟画面&铃声，循环播放(铃声为用户在手表上设置的闹钟铃声)\n2、关闭弹窗\n3、1分钟后弹窗自动关闭\n4.不支持右滑",0],["早睡弹窗","780 > 整机测试 > 功能 > 日程提醒","P0-High","无","1、早睡\n2、点击\"好的\"\n3、一直不点击\n4、提醒弹窗右滑","1、提示：\"时间不早啦，该去睡觉了\"，铃声，循环播放(铃声为用户在手表上设置的闹钟铃声)\n2、关闭弹窗\n3、1分钟后弹窗自动关闭\n4、不支持右滑",0],["关闭早起和早睡提醒","780 > 整机测试 > 功能 > 日程提醒","P2-Low","无","关闭早睡、早起提醒","表端不会出现提醒弹窗",0],["上学出发添加天气提醒","780 > 整机测试 > 功能 > 日程提醒","P1-Middle","无","1、APP添加上学出发，仅天气提醒\n2、点击\"好的\"\n3、1分钟后弹窗自动关闭\n4.提醒弹窗右滑","1.应在提醒时间内弹出天气弹窗\n2.弹窗关闭\n3.1分钟后弹窗自动关闭\n4.不支持右滑",0],["添加自定义提醒","780 > 整机测试 > 功能 > 日程提醒","P1-Middle","无","1.APP端添加自定义提醒且已开启\n2.点击好的\n3.一直不点击\n4.提醒弹窗右滑","1.表端在对应时间段内弹出提醒弹窗\n显示固定图标+提醒内容\n好的按钮，铃声跟闹钟保持一致\n2.弹窗关闭\n3.1分钟弹窗自动关闭\n4.不支持右滑",0],["应用中心-图标模式","780 > 整机测试 > 功能 > 应用中心","P0-High","无","1.表盘上滑，进入应用中心\n2.上下滑动","1.默认是图标模式：应与UI保持一致\n显示：3/*3应用，显示应用icon\n2.可以上下滑动查看应用列表",0],["应用中心-切换到图标文字模式","780 > 整机测试 > 功能 > 应用中心","P0-High","无","1.应用中心，下拉到最底部，点击“布局切换”按钮\n2.点击“图标文字”\n3.图标文字模式检查每个应用的显示：\n相机、相册、小爱同学、小爱有声、应用商店、表盘商店、表情商店\n联系人、朋友圈、天气、卡包、背单词、支付宝、心率、血氧、健康日记\n课程表、健康圆环、运动、闹钟、二维码、设置","1.应进入“布局切换”页面，布局界面当前模式选中\n2.立即切换模式并返回\n3.应按照顺序排列，显示：2/*2应用图片+应用名称展示，安装应用位于列表倒数第二位，最后一位是“设置”\n可以上下滑动查看应用列表",0],["图标文字模式切换到列表模式","780 > 整机测试 > 功能 > 应用中心","P0-High","无","1.图标文字模式切换到列表模式\n列表模式检查每个应用的显示：\n相机、相册、小爱同学、小爱有声、应用商店、表盘商店、表情商店\n联系人、朋友圈、天气、卡包、背单词、支付宝、心率、血氧、健康日记\n课程表、健康圆环、运动、闹钟、二维码、设置","1.可以切换成功，显示列表模式；\n1.所有应用显示正确，应按照顺序排列",0],["列表模式切换到图标模式","780 > 整机测试 > 功能 > 应用中心","P0-High","无","1.列表模式再次切换到图标模式\n2.检查每个应用的显示\n相机、相册、小爱同学、小爱有声、应用商店、表盘商店、表情商店\n联系人、朋友圈、天气、卡包、背单词、支付宝、心率、血氧、健康日记\n课程表、健康圆环、运动、闹钟、二维码、设置","1.可以切换成功，显示图标模式\n2.都显示正常，应按照顺序排列",0],["手表挂失页面","780 > 整机测试 > 功能 > 手表状态 > 手表挂失","P0-High","已插入sim卡","1、手表挂失\n2、点击打电话按钮\n3、连续短按侧键3次","1、提示：标题：手表已锁定，文案：\"解除挂失请前往家长手机应用>设备>手表管理\"、联系失主按钮\n2、呼叫管理员，头像(默认头像)、挂断按钮\n3、可执行SOS(优先高于手表禁用)",0],["挂失模式下收到管理员来电","780 > 整机测试 > 功能 > 手表状态 > 手表挂失","P0-High","无","管理员打电话给手表","2、显示来电页面，来电铃声自动最大\n应可以接听，接听后可以挂断",0],["挂失状态下收到非管理员来电","780 > 整机测试 > 功能 > 手表状态 > 手表挂失","P0-High","1、APP开启挂失模式","挂失状态下，非管理员给表端打电话，并挂断","表端没有任何提示",0],["退出挂失","780 > 整机测试 > 功能 > 手表状态 > 手表挂失","P0-High","1、APP开启挂失模式","APP端关闭挂失模式","表端应能退出挂失模式",0],["长续航模式下收到非家庭成员的来电","780 > 整机测试 > 功能 > 手表状态 > 长续航","P1-Middle","长续航模式下","1、非家庭联系人给表端打电话，并接听\n2、挂断","1、表端正常显示来电，接听无异常\n2、正常挂断无异常",0],["自动进入长续航模式","780 > 整机测试 > 功能 > 手表状态 > 长续航","P0-High","无","1、手表电量低于20%","1、表端自动进入长续航模式\n时钟界面，提示：“长续航模式中”， 页面显示时间、星期、日期、电量，无法上滑进入菜单\n2.同时发送通知消息给APP端：文案：手表当前电量低于20%，为保障与宝贝的联系，已自动开启长续航模式，请及时为手表充电",0],["手动进入长续航","780 > 整机测试 > 功能 > 手表状态 > 长续航","P0-High","无","通过APP端手动进入长续航\nAPP端更改：自动进入长续航电量设置为100%\nAPP端更改：自动进入长续航电量设置为50%\n手表电量到达设置的电量后","表端应进入长续航模式",0],["充电退出长续航模式","780 > 整机测试 > 功能 > 手表状态 > 长续航","P0-High","无","表端电量≥设置电量时","应自动退出长续航模式，同时给APP发送通知：\n文案：手表当前电量已达到XX%，自动退出长续航模式",0],["通过APP端手动退出长续航模式","780 > 整机测试 > 功能 > 手表状态 > 长续航","P1-Middle","无","APP端手动关闭长续航模式","表端应退出长续航模式，同时给APP发送通知：\n文案：当前已关闭长续航模式开关，手表退出长续航模式",0],["长续航模式下打电话","780 > 整机测试 > 功能 > 手表状态 > 长续航","P0-High","无","长续航模式下左滑进入联系人列表，选择任意联系人","应可以呼出电话",0],["长续航模式-收到联系人来电","780 > 整机测试 > 功能 > 手表状态 > 长续航","P0-High","无","长续航模式中，收到家庭成员的来电","应显示来电弹窗、可以接听、挂断、通话中不会退出长续航模式",0],["长续航模式下收到视频来电","780 > 整机测试 > 功能 > 手表状态 > 长续航","P1-Middle","长续航模式下","长续航模式下，联系人视频呼叫表端","表端没有任何提示（APP提示不能进行视频通话）",0],["充电中来普通电话","780 > 整机测试 > 功能 > 手表状态 > 充电禁用","P0-High","手表处于充电状态","1、给手表拨打普通电话","1、表端呼入页面提示文案：如需接听，请先移除充电器\n2、拔掉充电器以后，可以正常接听、挂断、挂断后，应退出充电禁用模式",0],["充电中来视频电话","780 > 整机测试 > 功能 > 手表状态 > 充电禁用","P0-High","手表处于充电状态","1、给手表拨打视频电话","1、表端呼入页面提示（提示文案：如需接听，请先移除充电器）\n2、拔掉充电器以后，可以正常接听、挂断、挂断后，应退出充电禁用模式",0],["充电脏污提醒","780 > 整机测试 > 功能 > 手表状态 > 充电禁用","P1-Middle","手表开机状态","1、手表连接充电器","1、表端提示：充电前请确保充电口清洁",0],["充电禁用页面","780 > 整机测试 > 功能 > 手表状态 > 充电禁用","P0-High","无","1、手表处于充电状态","1、插上充电器的同时应有音效\n文案提示\"充电前请确保充电口清洁\"\n手表无法滑动到其他界面\n见面显示：充电动效、当前电量、时间",0],["退出充电禁用","780 > 整机测试 > 功能 > 手表状态 > 充电禁用","P2-Low","手表处于充电状态","拔掉充电器","应退出充电禁用模式",0],["APP开启手表禁用功能","780 > 整机测试 > 功能 > 手表状态 > 手表禁用","P0-High","无","1、APP开启手表禁用","1、进入手表禁用，提示：月亮图标+\"手表禁用中\"，应显示时间、日期、电量\n无法进入菜单",0],["APP端选择禁用期间联系人","780 > 整机测试 > 功能 > 手表状态 > 手表禁用","P0-High","无","1.APP端选择禁用期间联系人，开启上学禁用或自定义时段禁用\n2.手表左滑进入联系人\n3.分别收到管理员勾选的可通话联系人（默认勾选管理员、爸爸、妈妈）的来电","1.手表进入禁用中状态\n2.联系人列表展示管理员勾选的可通话联系人\n3.可以收到管理员勾选的可通话联系人的来电，并能接听、挂断，挂断后进入禁用模式",0],["禁用状态下打电话","780 > 整机测试 > 功能 > 手表状态 > 手表禁用","P0-High","无","手表开启禁用，左滑进入联系人列表\n分别打电话给管理员、爸爸、妈妈（分别收到管理员勾选的可通话联系人）","可以呼出成功",0],["上学禁用","780 > 整机测试 > 功能 > 手表状态 > 手表禁用","P0-High","APP开启上学禁用\n已设置学校\n网络正常","1.手表进入学校区域\n2.手表离开学校区域","1.进入手表禁用模式\n2.退出手表禁用模式",0],["退出手表禁用","780 > 整机测试 > 功能 > 手表状态 > 手表禁用","P0-High","无","APP端关闭手表禁用功能","表端应能退出手表禁用模式",0],["20:30以后，上学禁用自动退出","780 > 整机测试 > 功能 > 手表状态 > 手表禁用","P1-Middle","APP开启上学禁用\n已设置学校\n网络正常\n且已进入学校区域","已进入上学禁用模式，\n晚上20:30点以后检查表端","应自动退出禁用模式",0],["退出设置","780 > 整机测试 > 功能 > 设置 > 退出","P1-Middle","无","1.设置列表页，短按power键\n2.设置列表页，右滑","1.退出设置，回到主页\n2.退出设置，返回3/*3应用列表页",0],["设置-进入表盘管理","780 > 整机测试 > 功能 > 设置 > 表盘管理","P0-High","在设置列表","1.点击表盘管理\n2.检查UI和文案显示","1.应进入表盘切换列表\nUI显示：\n<表盘管理 当前时间\n列表显示：\n表盘切换 >\n摇一摇切换 开关按钮 已关闭/已开启状态（默认已关闭）\n开启后，停留表盘状态且亮屏时摇一摇手表可以自动切换表盘",0],["设置-表盘切换-更换表盘","780 > 整机测试 > 功能 > 设置 > 表盘切换","P0-High","在设置列表","1.点击设置-表盘管理-表盘切换\n2.左右滑动屏幕\n3.点击任意表盘","1.应进入表盘切换页，表盘样式，UI显示：\n表盘数量默认8个，表盘位数量不限制。（具体表盘数据要跟UI保持一致）\n默认定位到当前表盘。显示：使用中\n没有左上角返回按钮\n2.滑动屏幕可以循环切换表盘\n3. 选择表盘后回到时钟页，展示新的表盘",0],["设置-表盘切换-表盘商店入口","780 > 整机测试 > 功能 > 设置 > 表盘切换","P0-High","无","1、已安装表盘商店，在表盘切换中左右滑动到表盘商店入口，点击进入","1、进入表盘商店应用",0],["表盘切换-摇一摇切换","780 > 整机测试 > 功能 > 设置 > 表盘切换","P1-Middle","无","1、点击\"设置\"-\"表盘管理\"-\"摇一摇切换\"","1、进入：<摇一摇切换、UI显示：\"已关闭/已开启\"按钮、摇一摇切换功能，默认关闭\n文案：开启后，停留表盘状态且亮屏时摇一摇手表可以自动切换表盘",0],["表盘切换-开启摇一摇","780 > 整机测试 > 功能 > 设置 > 表盘切换","P1-Middle","无","1.点击设置-表盘管理-开启摇一摇切换\n2.1开启后，亮屏状态下，在表盘页摇动手表\n2.2.检查切换顺序\n2.2开启后，灭屏状态下摇一摇","2.文案变成“已开启，开关高亮显示\n2.1.可以随机更换表盘，且摇动的时候有音效和振动效果\n2.2切换顺序为：本地表盘随机切换，每次随机不一样至所有表盘随机完成\n2.2息屏状态下无效",0],["设置-开启WLAN","780 > 整机测试 > 功能 > 设置 > -网络与连接-WLAN","P0-High","无","1、开启WLAN\n2、完成搜索\n3、手动下拉搜索列表","1、可以开启成功，文字提示：正在开启WLAN，搜索中...;\nUI显示：返回按钮、已开启、开关按钮为开启状态\n2.显示WLAN列表，按照信号强度排列，可上下滑动。30秒自动刷新一次列表\n3、不支持手动刷新",0],["设置-WLAN连接输入密码","780 > 整机测试 > 功能 > 设置 > -网络与连接-WLAN","P0-High","无","1、点击\"有锁的WLAN\"，输入区域\n2、点击\"返回\"\n3、点击数字、符号、abc、ABC可以切换当前键盘内容\n4、密码少于8位时，点击\"提交\"","1、全部明文显示，长度超出显示区域则只显示最后部分，保持在输入末尾\n2、进入WLAN\n3、次序为：数字、符号、abc、ABC\n4、提示：\"密码不足8位\"",0],["设置-WLAN连接状态","780 > 整机测试 > 功能 > 设置 > -网络与连接-WLAN","P0-High","无","1、无\n2、已保存\n3、正在连接...\n4、正在进行身份验证\n5、正在获取IP地址\n6、已连接\n7、密码错误\n8、网络不可用\n9、连接失败","1、未连接未保存WLAN\n2、未连接已保存WLAN（无论是否有密码）\n3、正在连接的WLAN\n4、正在进行身份验证\n5、正在获取IP地址\n6、已连接\n7、密码错误（toast弹窗）\n8、网络不可用\n9、toast提示：连接失败",0],["开启蓝牙","780 > 整机测试 > 功能 > 设置 > -网络与连接-蓝牙","P0-High","已开启蓝牙","1、关闭蓝牙\n2、关闭后再次开启","1、可以关闭成功，过渡文案提示：\"正在关闭蓝牙\"\n快捷菜单页，蓝牙应同步关闭\n2、可以开启成功，过渡文案提示：\"正在开启蓝牙\"，文案变成已开启，按钮显示开启状态\n快捷菜单页，蓝牙应同步开启",0],["配对蓝牙","780 > 整机测试 > 功能 > 设置 > -网络与连接-蓝牙","P0-High","无","3、点击一个\"蓝牙\"进行配对连接\n4、配对连接完成","3、显示：\"正在配对….\"-配对超时会有toast提示)\n4、自动跳转到蓝牙首页，显示：\"已连接\"",0],["连接已配对的蓝牙","780 > 整机测试 > 功能 > 设置 > -网络与连接-蓝牙","P0-High","已配对","1、点击已配对的蓝牙\n2、连接成功后","1、显示：\"正在连接…..\"\n2、显示：\"已连接\"，声音通过蓝牙耳机传出",0],["设置-静音模式开关","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","静音模式关闭状态下","1.开启静音模式\n2.点击弹窗内的：好的\n3.弹窗内按侧键","1.可以成功开启，副标题显示：已开启\n弹窗提示：静音模式开启后，闹钟、找手表、拍照、一键排水、通话、媒体应用不静音\n“好的”按钮\n1.1弹窗消失，回到上层菜单\n3.弹窗消失，回到表盘页，静音开启",0],["开启静音模式，检查铃声","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","1.开启静音模式后，检查来电铃声，包括：\n系统成功/失败反馈（绑定，NFC，支付）\n消息提醒消息提醒（电话消息、系统通知、视频通话提醒、短信、语音信息、天气），\n电量提醒（充电和低电量声音）\n手表（翻盖，摇一摇切换）\n3.开启静音模式后，检查设置-铃声音量","1.应为静音状态（静音模式下找手表、闹钟、拍照、媒体音乐正常）\n3.铃声音量置灰不可点击，进度条为0\n静音模式下找手表、闹钟、拍照、媒体音乐正常\n静音模式不对三方应用修改音量做限制",0],["设置-铃声音量-更改音量","780 > 整机测试 > 功能 > 设置 > -声音与振动","P2-Low","无","左右滑动铃声音量","不支持左右滑动",0],["增加音量进度条","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","铃声音量进度条：点击+按钮\n更改音量为最大","可以增加音量，每次点击，播放铃声\n可以更改成功",0],["减小音量进度条","780 > 整机测试 > 功能 > 设置 > -声音与振动","P1-Middle","无","铃声音量进度条：点击-按钮\n更改音量为最小","可以减少音量，每次点击-，播放一次铃声\n可以更改成功，手表变为静音模式，静音模式开关打开， 出现开启静音的提示",0],["设置-增加媒体音量","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","在声音与振动页面","1.点击媒体音量+号\n2.更改完成后，检查音量效果：\n运动的声音（语音播报、测试结果反馈）\n语音助手\n音乐播放（如喜马拉雅、小爱）\n应用声音（应用里的声音）\n联系人-碰一碰交友","1.总共6个档位的音量，可以增加音量，每点击一次，进度条增加一个音阶，同时播放1次铃声\n2.除来电音量和闹钟音量之外，都应改变",0],["减小媒体音量","780 > 整机测试 > 功能 > 设置 > -声音与振动","P1-Middle","在声音与振动页面","1.点击媒体音量-号\n2.更改完成后，检查音量效果，\n运动（语音播报、测试结果反馈等）\n语音助手\n音乐播放（如喜马拉雅、小爱）\n应用声音（应用里的声音）\n联系人-碰一碰交友\n（不包括来电音量和闹钟音量）","1.总共6个档位的音量可以降低音量，每点击一次，进度条减少一个音阶，同时播放1次铃声\n2.除来电音量和闹钟音量之外，都应改变",0],["设置-更改闹钟音量","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","1.点击闹钟音量+号\n2.更改完成后，检查闹钟音量效果","1.总共6个档位的音量，可以增加音量，每点击一次，进度条增加一个音阶，同时播放1次铃声\n2.闹钟音量，应改变",0],["减小闹钟音量","780 > 整机测试 > 功能 > 设置 > -声音与振动","P1-Middle","无","1.点击媒体音量-号\n2.更改完成后，检查闹钟音量效果","1.可以降低音量，每点击一次，进度条减少一个音阶，同时播放1次铃声\n2.闹钟音量，应改变",0],["关闭振动提醒","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","关闭振动提醒","可以关闭，关闭后，来电、通知、闹钟不应该触发振动",0],["开启振动提醒","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","关闭后再次开启振动提醒","可以开启，开启后，来电、通知、闹钟应触发振动",0],["设置-更改来电铃声","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","1.点击设置-声音与振动-依次更改来电铃声","1.每个都可以更改成功，选中的同时播放该铃声一次；\n更改完成后，来电铃声应与实际设置的保持一致",0],["设置-更改闹钟铃声","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","1.点击设置-声音与振动-依次更改闹钟铃声","1.每次都可以更改成功，选中的同时播放该铃声一次；\n更改完成后，闹钟铃声应与实际设置的保持一致",0],["设置-拍照声音开关","780 > 整机测试 > 功能 > 设置 > -声音与振动","P0-High","无","关闭拍照声音","可以关闭，按钮状态切换为关闭状态，副标题显示已关闭\n开启后，所有调用相机的功能，都应开启拍照声音；包括但不限于：拍照、拍照识字、拍照识物、联系人",0],["开启翻转联动后，应用外手表翻盖","780 > 整机测试 > 功能 > 设置 > -翻转设置","P0-High","已开启翻转联动","1、小组件首页、编辑、添加等页面翻盖；控制中心页面翻盖；应用列表页面翻盖；快捷应用首页、编辑、添加等页面翻盖\n2、出现翻转联动界面后点击相机应用\n3、出现翻转联动界面后点击扫码支付功能","1、以上行为均出现翻转联动界面，展示相机、扫码支付功能入口\n2、进入相机应用，默认后置\n3、进入支付宝",0],["更改时钟格式为12小时","780 > 整机测试 > 功能 > 设置 > -时钟格式","P1-Middle","无","1.点击设置-时钟格式-更换时钟格式为12小时\n2.设置成功以后，检查中午12点和13点","可以设置成功\n设置以后，全局应用，包含但不限于:长续航模式、通知、信息、表盘时间、朋友圈时间、天气、应用商店等\n应以12小时制显示，显示12:00和1:00",0],["设置-密码解锁","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","未绑定，有网络","1.点击设置-密码解锁","应弹出绑定二维码：\n文案：使用前请先扫码绑定手表",0],["未设置过密码时，进入设置密码解锁","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已绑定\n未设置过密码","1、点击设置-密码解锁\n1.1.弹窗内点击设置按钮\n2.再次进入密码解锁","1.弹出弹窗“使用密码解锁请前下载最新家长手机应用”和“好的”按钮\n点击好的按钮，显示弹窗“密码解锁用于解锁手表，请先设置密码”和“设置”“取消”按钮。\n1.1进入密码设置页。\n2.没有该提示，应进入设置新密码页面。\n输入框、输入新密码、键盘",0],["首次设置密码","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已绑定\n未设置过密码","1.首次输入四位密码\n2.退出\n3.退出后再次进入密码设置","1.应明文显示，输入完成后，文案提示：再输入一次\n2.密码不应生效\n3.不应保存上次输入的密码，应重新输入密码，文案提示：输入新密码",0],["密码设置成功，进入解锁页","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已绑定\n未设置过密码","1.两次密码相同\n2.设置密码后，等待手表自动息屏，再次亮屏","1.弹出弹窗提示“密码设置成功”点击“好的”，按钮弹框消失，同时页面跳转至密码解锁设置页\n2.需输入正确密码后，才能使用\n2.1亮屏后，仍然进入密码解锁开关页，可以直接关闭密码解锁",0],["通过设置-密码解锁，输入四次错误的密码","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已设置密码锁","1、点击设置-密码解锁，密码累计输错四次\n2、点击好的\n3、点击忘记密码按钮","1、弹出提示：手表已锁定请10（动态计时）分钟后再试\n忘记密码 ?\n好的\n2、弹窗关闭，回到键盘页。显示倒计时：X分钟后再试\n3、弹出忘记密码提示：\n向{管理员}申请解除密码，家长同意后，手表可正常使用或重新设置密码\n申请解除密码\n无法发送申请 ?",0],["已锁定时，进入设置密码解锁","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已设置密码锁\n且已开启密码解锁","进入设置-密码解锁-输入四次错误的密码，不要锁屏，再进入设置-密码解锁","显示锁定界面：文案：X分钟后再试\n键盘置灰\n显示忘记密码、联系家长按钮",0],["已锁定时通过设置，发送忘记密码申请","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已设置密码锁\n且已开启密码解锁","进入设置-密码解锁-输入四次错误的密码，不要锁屏，再进入设置-\n点击忘记密码按钮","进入新的页面：显示文案：\n忘记密码\n向{管理员}申请解除密码，家长同意后，手表可正常使用或重新设置密码\n申请解除密码\n无法发送申请 ?",0],["已锁定时通过设置，联系家长","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","已设置密码锁\n且已开启密码解锁","进入设置-密码解锁-输入四次错误的密码，不要锁屏，再进入设置-\n点击联系家长按钮","打开管理员详情页",0],["密码解锁","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","1、已设置密码锁","1、解锁密码\n2、长按手表侧键重启\n3、再次输入密码解锁\n3.1、解锁后立即大掌灭屏后按压侧键亮屏","1、进入时钟页面\n2、重启成功后进入密码锁页面\n3、进入时钟页面\n3.1、应进入密码锁页面",0],["已锁定时，给管理员打视频通话","780 > 整机测试 > 功能 > 设置 > -密码解锁","P0-High","无","1.锁定时，在密码输入页点击“联系家长”\n联系人详情页点击“视频通话”按钮\n2.10分钟内挂断视频通话\n3.10分钟后挂断视频通话","1.应发起视频呼叫\n2.挂断后；回到联系人详情页，右滑回到上一页\n3.挂断后，回到联系人详情页右滑回到上一页",0],["久坐提醒默认开关","780 > 整机测试 > 功能 > 设置 > -久坐提醒","P0-High","无","1、进入设置-点击久坐提醒\n2、07：00-21：00处于久坐状态时，观察手表","1.久坐提醒默认开启\n副标题显示已开启\n文案提示：开启后在07：00-21：00久坐时，提醒起身\n2.收到久坐提醒弹窗\n文案:长时间久坐会影响健康，起身活动一下吧\n好的",0],["关闭久坐提醒","780 > 整机测试 > 功能 > 设置 > -久坐提醒","P0-High","无","关闭久坐提醒","1.久坐提开关为关闭状态\n副标题显示已关闭\n文案提示：开启后在07:00-21:00久坐时，提醒起身",0],["设置-手表空间增加/减少","780 > 整机测试 > 功能 > 设置 > -手表空间","P0-High","已用空间减少","比如：卸载应用、删除照片或者视频\n1.检查卡片上的已用空间、卡片上的可用空间，\n实际已用空间、可用空间\n应用列表已用空间","1.已用空间能能减少\n2.可用空间应能增加",0],["设置-进入应用管理","780 > 整机测试 > 功能 > 设置 > -应用管理","P0-High","无","点击设置-应用管理","应进入应用管理页面；\nUI显示：左上角返回按钮\n功能列表：\n权限管理\n流量统计\n应用行为记录",0],["设置-退出应用管理","780 > 整机测试 > 功能 > 设置 > -应用管理","P0-High","无","点击左上角返回按钮","退出当前页，返回到设置页",0],["设置-权限管理开关","780 > 整机测试 > 功能 > 设置 > -应用管理","P1-Middle","无","1.点击任意应用，例如：相机（这里要覆盖列表里的所有应用）\n2.点击左上角返回按钮","1.应进入相机权限管理列表，显示该应用的所有权限开关状态，默认全部关闭，状态文案应是：禁止获取\n权限列表：\n存储空间、电话、相机、麦克风（以Android系统为准）\n2.应退出此页面，返回到上层菜单",0],["开启所有权限后打开应用","780 > 整机测试 > 功能 > 设置 > -应用管理","P1-Middle","已关闭权限弹窗\n这里只是用相机举例，所有应用都要覆盖","1.进入设置-应用管理-权限管理；选择任意应用，开启所有权限；\n比如：相机；开启所有权限 （以Android系统为准）\n开启存储空间\n开启电话\n开启相机\n开启麦克风\n2.开启后，进入launcher打开相机应用","1.可以成功开启，开启后文案显示“允许获取”，按钮应为开启状态\n注：如果是首次进入应用，不能直接启动，还需点击应用后同意隐私权限\n2.可以直接启动，不会弹出权限弹窗",0],["关闭所有权限后打开应用","780 > 整机测试 > 功能 > 设置 > -应用管理","P1-Middle","已开启权限弹窗\n需同意所有权限才可使用的应用\n无需同意所有权限即可使用的应用\n这里只是用相机举例，所有应用都要覆盖","1.进入设置-应用管理-权限管理；关闭相机所有权限\n关闭存储空间\n关闭电话\n关闭相机\n关闭麦克风\n2.关闭后，进入launcher打开相机应用","1.可以成功关闭，关闭后，文案显示\"禁止获取\"，按钮应为关闭状态\n2.应弹出所有权限弹窗，包括：存储空间、电话、相机、麦克风",0],["设置-系统功能","780 > 整机测试 > 功能 > 设置 > -系统功能","P0-High","已绑定","1.点击设置-系统功能\n2.点击左上角返回按钮、或者右滑屏幕，","1.应进入系统功能页面，默认开启，UI和文案显示：\n左上角返回按钮，右上角当前时间\n相册；已启用\n二维码，已启用\n2.退出当前页，回到上层菜单",0],["关闭二维码检查应用菜单","780 > 整机测试 > 功能 > 设置 > -系统功能","P0-High","无","1.关闭二维码\n2.检查应用菜单","1.可以成功关闭，按钮为关闭状态，toast提示：二维码隐藏，APP端应能收到通知消息\n2.二维码应不显示",0],["开启相册，检查应用菜单","780 > 整机测试 > 功能 > 设置 > -系统功能","P0-High","无","1.开启相册\n2.检查应用菜单\n3.检查相册相关入口：包括：朋友圈相册入口，信息-相册入口都显示，相机-相册入口","1.可以成功开启，按钮为开启状态，toast提示：相册显示，APP端应能收到通知消息\n2.相册应显示",0],["开启二维码检查应用菜单","780 > 整机测试 > 功能 > 设置 > -系统功能","P0-High","无","1.开启二维码\n2.检查应用菜单","1.可以成功开启，按钮为开启状态，toast提示：二维码显示，APP端应能收到通知消息\n2.二维码应显示\n3.应能打开二维码",0],["设置-重启手表","780 > 整机测试 > 功能 > 设置 > -系统功能","P0-High","无","1.点击设置/系统操作/重启手表\n1.1点击√\n1.2点击X\n1.3点击侧键","1.弹窗提示文案：“确认重启手表？”√和X按钮\n1.1展示关机动画，动画播放完成后进行重启\n1.2.弹窗关闭，返回系统操作页\n1.3.弹窗关闭，返回表盘页",0],["添加快捷应用后，启动应用","780 > 整机测试 > 功能 > 手表框架 > 快捷应用&小组件 > 快捷应用","P0-High","无","依次添加：联系人、健康圆环、朋友圈、运动、课程表、天气\n并进入快捷应用","点击联系人，可以进入联系人详情页\n点击健康圆环，可以进入健康圆环详情页\n点击运动，可以进入运动详情页",0],["删除卡片","780 > 整机测试 > 功能 > 手表框架 > 快捷应用&小组件 > 快捷应用","P1-Middle","无","1、添加多个快捷应用后，把倒数第二个卡片挪到最后一个，点击倒数第二个卡片的删除按钮\n2、删除完所有的卡片后，再添加卡片","１、正常删除当前卡片\n2、正常显示添加的卡片，位置依次从末尾添加",0],["快捷应用-移除快捷应用","780 > 整机测试 > 功能 > 手表框架 > 快捷应用&小组件 > 快捷应用","P0-High","快捷应用编辑页面","1.点击应用右上角的删除按钮\n2.删除默认应用：联系人、健康圆环、朋友圈\n3.删除后，保存，进入快捷应用查看","1.应删除该应用的快捷方式，右侧应用左移补位\n2.应可以删除成功\n3.应不显示已被删除的快捷应用",0],["小组件进入/退出","780 > 整机测试 > 功能 > 手表框架 > 快捷应用&小组件 > 小组件","P0-High","已联网","表盘页右滑","应进入小组件页面",0],["点击+添加组件","780 > 整机测试 > 功能 > 手表框架 > 快捷应用&小组件 > 小组件","P0-High","无","1、组件编辑页面点击空缺+按钮\n2、组件编辑页面点击底部+按钮","1、跳转到添加小组件页面，左上角显示<添加小组件，右上角显示当前时间\n下方显示未添加的组件和已添加的组件\n2、跳转到新增组件页面，左上角显示<新增组件，右上角显示当前时间\n从上到下显示：小组件、大组件 两个占位图",0],["删除小组件","780 > 整机测试 > 功能 > 手表框架 > 快捷应用&小组件 > 小组件","P0-High","小组件编辑页面","1.点击组件右上角删除按钮","组件应被删除",0],["应用列表长按卸载应用","780 > 整机测试 > 功能 > 手表框架 > launcher主菜单","P1-Middle","无","1、在应用列表长按某一应用，进行卸载应用","其他应用图标应保持不变，不会变默认图标",0]];
+(function(){
+"use strict";
+/* ========== 0. 常量 ========== */
+const KEYS = { CASES:'smoke_cases_v1', META:'smoke_meta_v1' };
+const API = '/api/cases';
+const PRIORITIES = ['P0-High','P1-Middle','P2-Low'];
+const PRIO_CLASS = { 'P0-High':'badge-p0', 'P1-Middle':'badge-p1', 'P2-Low':'badge-p2' };
+const PRIO_COLOR = { 'P0-High':'#d93025', 'P1-Middle':'#e8710a', 'P2-Low':'#1e6fc8' };
+const TYPE_WORDS = { 0:'action', 1:'verify', 2:'setup' };
+const TYPE_ID = { action:0, verify:1, setup:2 };
+const MODULE_DIRS = { '相机':'02_camera', '设置':'04_settings', '朋友圈':'15_circle_friends' };
+const SEED_VERSION = 1;
+/* 前置条件固定枚举（只能选择，不可自由输入） */
+const PRECOND_OPTIONS = ['无','已联网','已授权','已绑定','已设置锁屏密码','充电中','已经插卡'];
+/* 旧文本 → 枚举项 的同义词映射（关键词命中，用于存量数据回显） */
+function mapPrecondToEnum(text){
+  const t = String(text||'');
+  if (/无|不要求|无要求/.test(t)) return '无';
+  if (/密码|锁屏|解锁/.test(t)) return '已设置锁屏密码';
+  if (/绑定|解绑/.test(t)) return '已绑定';
+  if (/授权|权限/.test(t)) return '已授权';
+  if (/网络|联网|WiFi|WLAN|wifi|网/.test(t)) return '已联网';
+  if (/充电/.test(t)) return '充电中';
+  if (/SIM|sim|Sim|插卡|卡/.test(t)) return '已经插卡';
+  return null;
+}
+
+/* ========== 1. 工具层 ========== */
+const $  = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+const uid = () => 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function download(filename, content, mime='text/plain'){
+  const blob = content instanceof Blob ? content : new Blob([content], {type:mime + ';charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function toast(msg, type=''){
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  $('#toastWrap').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(), 320); }, 3000);
+}
+function confirmDialog({title='确认操作', message='', okText='确定', danger=false, onOk}){
+  return new Promise(resolve => {
+    const root = $('#modalRoot');
+    root.innerHTML = `
+      <div class="modal-mask">
+        <div class="modal" style="width:min(420px,90vw)">
+          <div class="modal-head"><h3>${escapeHtml(title)}</h3></div>
+          <div class="modal-body" style="color:var(--text-secondary)">${message}</div>
+          <div class="modal-foot">
+            <button class="btn" data-act="cancel">取消</button>
+            <button class="btn ${danger?'btn-danger':'btn-primary'}" data-act="ok">${escapeHtml(okText)}</button>
+          </div>
+        </div>
+      </div>`;
+    const mask = $('.modal-mask', root);
+    const close = (v) => { root.innerHTML=''; resolve(v); };
+    mask.addEventListener('click', e => { if (e.target===mask) close(false); });
+    $$('button', root).forEach(b => b.addEventListener('click', () => close(b.dataset.act==='ok')));
+  });
+}
+function formatTime(ts){
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2,'0');
+  return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/* 步骤解析：按行拆，去编号前缀（1、 / 1. / 1．） */
+function parseSteps(text){
+  return String(text||'').split('\n').map((raw, i) => {
+    const t = raw.replace(/^\s*(\d+)[、.．]\s*/, '');
+    return { raw, text: t, num: i+1 };
+  }).filter(l => l.raw.trim() !== '');
+}
+/* 启发式自动标注：verify/setup/action */
+function autoTagSteps(lines){
+  return lines.map(l => {
+    const t = l.text;
+    if (/验证|检查|确认|查看|应出现|应消失|应显示|提示|断言|校验/.test(t)) return 1;
+    if (/前置|启动|连接|打开应用|登录|初始化|准备/.test(t)) return 2;
+    return 0;
+  });
+}
+const ruleFor = (k) => $(`#${k}`);
+
+/* ========== 2. 数据层 ========== */
+const store = {
+  cases: [],
+  meta: { theme:'light', seedVersion:0, moduleDirOverrides:{} },
+  remote: { available:false, offline:false, updatedAt:0 },  // 服务器同步状态
+  listeners: [],
+  onChange(fn){ this.listeners.push(fn); },
+  emit(){ this.listeners.forEach(fn => fn()); },
+
+  load(){
+    // meta
+    try {
+      const m = localStorage.getItem(KEYS.META);
+      if (m) this.meta = Object.assign({ theme:'light', seedVersion:0, moduleDirOverrides:{} }, JSON.parse(m));
+    } catch(e) { this.meta = { theme:'light', seedVersion:0, moduleDirOverrides:{} }; }
+    // cases
+    let raw = null;
+    try {
+      raw = JSON.parse(localStorage.getItem(KEYS.CASES));
+    } catch(e) {
+      // 损坏 → 备份后重建
+      try { localStorage.setItem(KEYS.CASES + '_corrupt_' + Date.now(), localStorage.getItem(KEYS.CASES)); } catch(_){}
+      localStorage.removeItem(KEYS.CASES);
+      toast('检测到损坏的数据，已备份并重建', 'warn');
+    }
+    if (raw && raw.cases) {
+      this.cases = raw.cases.map(c => this.normalize(c));
+    } else if (!raw) {
+      this.seedIfNeeded();
+    }
+  },
+  normalize(c){
+    const stepCount = String(c.steps||'').split('\n').filter(l=>l.trim()).length;
+    let types = Array.isArray(c.stepTypes) ? c.stepTypes.map(Number) : [];
+    while (types.length < stepCount) types.push(0);
+    types = types.slice(0, stepCount);
+    if (!PRIORITIES.includes(c.priority)) c.priority = 'P0-High';
+    return Object.assign({ id:uid(), title:'', module:'', priority:'P0-High', preconditions:'', steps:'', stepTypes:types, expected:'', inSmoke:false, smokePkg:'', smokeActivity:'', smokeSrc:'', createdAt:Date.now(), updatedAt:Date.now() }, c, { stepTypes:types });
+  },
+  seedIfNeeded(){
+    if (this.meta.seedVersion >= SEED_VERSION) return;
+    this.cases = SEED.map((s,i) => ({
+      id: 'seed_' + i,
+      title: s[0], module: s[1], priority: s[2], preconditions: s[3],
+      steps: s[4], stepTypes: autoTagSteps(parseSteps(s[4])), expected: s[5],
+      inSmoke: !!s[6], createdAt: Date.now(), updatedAt: Date.now()
+    }));
+    this.meta.seedVersion = SEED_VERSION;
+    this.save(true, true);
+  },
+  persistLocal(){
+    try {
+      localStorage.setItem(KEYS.CASES, JSON.stringify({ version:1, cases:this.cases }));
+      localStorage.setItem(KEYS.META, JSON.stringify(this.meta));
+    } catch(e) { toast('保存失败：存储空间不足', 'error'); }
+  },
+  /* 远程同步：POST 全量到服务器；409 冲突 → 拉取服务器最新并提示 */
+  async syncRemote(){
+    if (!this.remote.available) return 'skipped';
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cases: this.cases, baseUpdatedAt: this.remote.updatedAt })
+      });
+      if (res.status === 409) {
+        const fresh = await fetch(API).then(r => r.json());
+        this.remote.updatedAt = fresh.updatedAt || 0;
+        this.cases = (fresh.cases||[]).map(c => this.normalize(c));
+        this.persistLocal();
+        this.emit();
+        toast('服务器数据已被他人更新，已同步最新，请重新编辑', 'warn');
+        return 'conflict';
+      }
+      if (res.ok) {
+        const r = await res.json();
+        this.remote.updatedAt = r.updatedAt || this.remote.updatedAt;
+        return 'ok';
+      }
+      throw new Error('http ' + res.status);
+    } catch(e) {
+      const wasOffline = this.remote.offline;
+      this.remote.offline = true;
+      // 自动保存会高频触发同步，离线提示只在首次失败时弹出，避免刷屏
+      if (!wasOffline) toast('网络异常：数据仅保存在本地，恢复连接后重新打开页面同步', 'error');
+      return 'failed';
+    }
+  },
+  /* 连接服务器：服务器有数据 → 覆盖本地；服务器空 → 上传本地（含种子）；不可达 → 离线模式 */
+  async initRemote(){
+    try {
+      const res = await fetch(API);
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      this.remote.available = true;
+      this.remote.offline = false;
+      this.remote.updatedAt = data.updatedAt || 0;
+      if (Array.isArray(data.cases) && data.cases.length) {
+        this.cases = data.cases.map(c => this.normalize(c));
+        this.persistLocal();
+        return 'synced';
+      }
+      await this.syncRemote();   // 服务器空：本地上传（种子/缓存）
+      return 'uploaded';
+    } catch(e) {
+      this.remote.available = false;
+      this.remote.offline = true;
+      return 'offline';
+    }
+  },
+  save(silent, skipRemote){
+    this.persistLocal();
+    if (!silent) this.emit();
+    if (!skipRemote) {
+      // 串行化远程同步：连续编辑/批量导入触发多次 save 时，POST 排队执行，避免 409 竞态
+      this._syncChain = (this._syncChain || Promise.resolve())
+        .then(() => this.syncRemote())
+        .catch(() => {});
+    }
+  },
+  get(id){ return this.cases.find(c => c.id === id); },
+  add(data){ const c = this.normalize(data); this.cases.unshift(c); this.save(); return c; },
+  addMany(items){
+    // 批量导入：一次保存（本地 + 远程），避免逐条触发
+    if (!items.length) return [];
+    const added = items.map(d => this.normalize(d));
+    this.cases.unshift(...added);
+    this.save();
+    return added;
+  },
+  patch(id, data){ const c = this.get(id); if (!c) return null; Object.assign(c, data, { updatedAt: Date.now() }); this.save(); return c; },
+  remove(ids){ this.cases = this.cases.filter(c => !ids.includes(c.id)); this.save(); },
+  duplicate(id){
+    const src = this.get(id); if (!src) return null;
+    const c = this.normalize({ ...src, id:uid(), title: src.title + '（副本）', inSmoke:false, createdAt:Date.now(), updatedAt:Date.now() });
+    const idx = this.cases.findIndex(x => x.id===id);
+    this.cases.splice(idx+1, 0, c); this.save(); return c;
+  },
+  setSmoke(ids, flag){ this.cases.forEach(c => { if (ids.includes(c.id)) c.inSmoke = !!flag; }); this.save(); },
+
+  /* ---- 派生查询 ---- */
+  filter({keyword='', priority='', module='', smokeOnly=false}){
+    return this.cases.filter(c => {
+      if (keyword && !c.title.toLowerCase().includes(keyword.toLowerCase())) return false;
+      if (priority && c.priority !== priority) return false;
+      if (module && !(c.module||'').startsWith(module)) return false;
+      if (smokeOnly && !c.inSmoke) return false;
+      return true;
+    });
+  },
+  moduleTree(){
+    const root = { name:'', count:0, children:{} };
+    this.cases.forEach(c => {
+      const segs = (c.module||'').split('>').map(s => s.trim()).filter(Boolean);
+      let node = root;
+      node.count++;
+      segs.forEach(seg => {
+        if (!node.children[seg]) node.children[seg] = { name:seg, count:0, children:{} };
+        node = node.children[seg];
+        node.count++;
+      });
+    });
+    const toArr = n => ({ name:n.name, count:n.count, children:Object.values(n.children).map(toArr) });
+    return toArr(root).children;
+  },
+  stats(){
+    const byPriority = { 'P0-High':0, 'P1-Middle':0, 'P2-Low':0 };
+    const byModule = {};
+    this.cases.forEach(c => {
+      byPriority[c.priority] = (byPriority[c.priority]||0) + 1;
+      const segs = (c.module||'').split('>').map(s=>s.trim()).filter(Boolean);
+      const m = segs[segs.length-1] || '(未分类)';
+      byModule[m] = (byModule[m]||0) + 1;
+    });
+    return {
+      total: this.cases.length,
+      smoke: this.cases.filter(c=>c.inSmoke).length,
+      p0: byPriority['P0-High'], p1: byPriority['P1-Middle'], p2: byPriority['P2-Low'],
+      modules: Object.keys(byModule).length,
+      byPriority, byModule
+    };
+  },
+  topModules(n=5){
+    const s = this.stats();
+    return Object.entries(s.byModule).sort((a,b) => b[1]-a[1]).slice(0, n);
+  }
+};
+
+/* ========== 3. UI 状态 ========== */
+const ui = {
+  keyword:'', priority:'', module:'', smokeOnly:false,
+  selected: new Set(),
+  detailId: null,       // 抽屉当前编辑的 id（null=新增）
+  collapsed: new Set()  // 模块树折叠的节点路径
+};
+
+/* ========== 4. 渲染 ========== */
+function renderAll(){
+  const list = store.filter({ keyword:ui.keyword, priority:ui.priority, module:ui.module, smokeOnly:ui.smokeOnly });
+  renderStats();
+  renderModuleTree();
+  renderTable(list);
+  renderTopbarChips();
+  fillModuleDatalist();
+  // 编辑模态打开时保留用户草稿，不重建行编辑器；id 失效则关闭
+  if (ui.detailId && !store.get(ui.detailId)) { ui.detailId = null; closeDetail(); }
+  syncBulkBar();
+  syncCheckAll(list);
+}
+function renderTopbarChips(){
+  $('#chipTotal').innerHTML = `用例 <b>${store.cases.length}</b>`;
+  $('#chipSmoke').innerHTML = `冒烟 <b>${store.cases.filter(c=>c.inSmoke).length}</b>`;
+}
+function renderStats(){
+  const s = store.stats();
+  $('#statCards').innerHTML = `
+    <div class="stat-card"><div class="num">${s.total}</div><div class="lbl">用例总数</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--success)">${s.smoke}</div><div class="lbl"><span class="dot" style="background:var(--success)"></span>冒烟集合</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--danger)">${s.p0}</div><div class="lbl"><span class="dot" style="background:var(--danger)"></span>P0 用例</div></div>
+    <div class="stat-card"><div class="num">${s.modules}</div><div class="lbl">模块数</div></div>`;
+  const max = Math.max(s.p0, s.p1, s.p2, 1);
+  $('#prioBars').innerHTML = PRIORITIES.map(p => `
+    <div class="bar-row ${ui.priority===p?'active':''}" data-prio="${p}" title="筛选 ${p}">
+      <div class="bar-lbl">${p}</div>
+      <div class="bar"><div class="bar-fill" style="width:${Math.round(s.byPriority[p]/max*100)}%;background:${PRIO_COLOR[p]}"></div></div>
+      <div class="bar-num">${s.byPriority[p]}</div>
+    </div>`).join('');
+  const top = store.topModules(5);
+  const tmax = Math.max(...top.map(t=>t[1]), 1);
+  $('#moduleTop').innerHTML = top.map(t => `
+    <div class="bar-row" data-module="${escapeHtml(t[0])}" title="筛选 ${escapeHtml(t[0])}">
+      <div class="bar-lbl">${escapeHtml(t[0])}</div>
+      <div class="bar"><div class="bar-fill" style="width:${Math.round(t[1]/tmax*100)}%;background:var(--primary)"></div></div>
+      <div class="bar-num">${t[1]}</div>
+    </div>`).join('') || '<div style="color:var(--text-secondary);font-size:12px">暂无数据</div>';
+}
+function renderModuleTree(){
+  const tree = store.moduleTree();
+  if (!tree.length) { $('#moduleTree').innerHTML = '<div style="color:var(--text-secondary);font-size:12px">暂无模块</div>'; return; }
+  const renderNode = (n, path, depth) => {
+    const full = path ? path + ' > ' + n.name : n.name;
+    const key = full;
+    const hasChildren = n.children.length > 0;
+    const isOpen = !ui.collapsed.has(key);
+    const isActive = ui.module === full;
+    let html = `<li>
+      <div class="tree-item ${isActive?'active':''}" data-module="${escapeHtml(full)}" data-depth="${depth}">
+        <span class="tw">${hasChildren ? (isOpen?'▾':'▸') : ''}</span>
+        <span class="tn">${escapeHtml(n.name)}</span>
+        <span class="tc">${n.count}</span>
+      </div>`;
+    if (hasChildren && isOpen) {
+      html += `<ul>${n.children.map(ch => renderNode(ch, full, depth+1)).join('')}</ul>`;
+    }
+    return html + '</li>';
+  };
+  $('#moduleTree').innerHTML = `
+    <ul>
+      <li><div class="tree-item ${ui.module===''?'active':''}" data-module="__all__"><span class="tw"></span><span class="tn">全部模块</span><span class="tc">${store.cases.length}</span></div></li>
+      ${tree.map(n => renderNode(n, '', 0)).join('')}
+    </ul>`;
+}
+/* 模块内编号：按 store 顺序给同一模块的用例编 01、02…，与 aatf 导出（# NN、用例名）及
+   /run-smoke-test --case NN 对照一致；基于全量列表计算，筛选时编号不跳动 */
+function buildNumMap(){
+  const cnt = {};
+  const map = {};
+  store.cases.forEach(c => {
+    const m = c.module || '';
+    cnt[m] = (cnt[m]||0) + 1;
+    map[c.id] = String(cnt[m]).padStart(2,'0');
+  });
+  return map;
+}
+function renderTable(list){
+  const nums = buildNumMap();
+  const body = $('#caseBody');
+  $('#rowCount').textContent = `共 ${list.length} 条`;
+  $('#emptyState').hidden = list.length > 0;
+  $('#caseTable').style.display = list.length ? '' : 'none';
+  body.innerHTML = list.map(c => {
+    const cls = PRIO_CLASS[c.priority] || 'badge-p2';
+    const smoke = c.inSmoke ? '<span class="badge badge-smoke">✓</span>' : '<span class="badge badge-nosmoke">○</span>';
+    const steps = String(c.steps||'').split('\n').filter(l=>l.trim()).length;
+    return `<tr data-id="${escapeHtml(c.id)}" class="${ui.selected.has(c.id)?'selected':''}">
+      <td class="checkbox-cell"><input type="checkbox" class="row-check" data-id="${escapeHtml(c.id)}" ${ui.selected.has(c.id)?'checked':''}></td>
+      <td class="c-num" title="模块内编号（与导出 # NN、一致）">${nums[c.id]||''}</td>
+      <td><div class="c-title">${escapeHtml(c.title)}</div></td>
+      <td><div class="c-module" title="${escapeHtml(c.module)}">${escapeHtml(c.module)}</div></td>
+      <td><span class="badge ${cls}">${escapeHtml(c.priority)}</span></td>
+      <td data-smoke="${c.id}">${smoke}</td>
+      <td>${steps}</td>
+      <td class="c-time">${formatTime(c.updatedAt)}</td>
+      <td><div class="row-actions">
+        <button data-act="edit" title="编辑">✎</button>
+        <button data-act="duplicate" title="复制">⧉</button>
+        <button data-act="del" class="del" title="删除">✕</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  if (!ui.selected.size) $('#checkAll').checked = false;
+}
+function syncCheckAll(list){
+  const total = list.filter(c => !ui.selected.has(c.id) === false); // 未选中计数
+  const visible = list.length;
+  const checked = list.filter(c => ui.selected.has(c.id)).length;
+  $('#checkAll').checked = visible > 0 && checked === visible;
+  $('#checkAll').indeterminate = checked > 0 && checked < visible;
+}
+function syncBulkBar(){
+  const n = ui.selected.size;
+  $('#bulkBar').classList.toggle('show', n > 0);
+  $('#bulkCount').textContent = `已选 ${n} 条`;
+}
+function fillModuleDatalist(){
+  const mods = [...new Set(store.cases.map(c=>c.module).filter(Boolean))].sort();
+  $('#moduleDatalist').innerHTML = mods.map(m => `<option value="${escapeHtml(m)}">`).join('');
+}
+
+/* 前置条件渲染：固定 7 项枚举，无历史动态库 */
+function renderPrecondChips(selected){
+  const sel = new Set(selected.map(s => s.trim()).filter(Boolean));
+  const chip = (c) => `<span class="precond-chip ${sel.has(c)?'selected':''} ${c==='无'&&!sel.has('无')?'sel-none':''}" data-p="${escapeHtml(c)}">${escapeHtml(c)}</span>`;
+  $('#precondChips').innerHTML = PRECOND_OPTIONS.map(c => chip(c)).join('');
+}
+/* 编辑模态（步骤-预期配对） */
+/* 预期结果按行拆分：行首 "n." / "n.m、" / "n、" 归属到步骤 n；无编号行归到最近步骤 */
+function splitExpected(expected, stepCount){
+  const result = Array.from({ length: Math.max(stepCount,1) }, () => []);
+  const lines = String(expected||'').split('\n');
+  let cur = 0;
+  lines.forEach(line => {
+    const t = line.trim();
+    if (!t) return;
+    const m = t.match(/^(\d+)(?:\.(\d+))?\s*[、.．]?\s*(.*)$/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n >= 1 && n <= result.length) { cur = n - 1; if (m[3].trim()) result[cur].push(m[3].trim()); return; }
+    }
+    result[cur].push(t);
+  });
+  return result;
+}
+/* 合并：单条 → "n、文本"；多条 → "n.1、文本"、"n.2、文本"（对齐样本格式） */
+function mergeExpected(perStep){
+  const parts = [];
+  perStep.forEach((list, i) => {
+    const n = i + 1;
+    const cleaned = (list||[]).map(t => String(t).replace(/^\s*\d+(?:\.\d+)?\s*[、.．]?\s*/, '').trim()).filter(Boolean);
+    if (!cleaned.length) return;
+    if (cleaned.length === 1) parts.push(`${n}、${cleaned[0]}`);
+    else cleaned.forEach((t, j) => parts.push(`${n}.${j+1}、${t}`));
+  });
+  return parts.join('\n');
+}
+function makeStepRow(i, text, type, exp){
+  const div = document.createElement('div');
+  div.className = 'step-row';
+  div.innerHTML = `
+    <span class="sr-num"></span>
+    <input type="text" class="sr-text" placeholder="步骤描述（如：点击屏幕）" value="${escapeHtml(text)}">
+    <select class="sr-type">
+      <option value="0" ${type===0?'selected':''}>action</option>
+      <option value="1" ${type===1?'selected':''}>verify</option>
+      <option value="2" ${type===2?'selected':''}>setup</option>
+    </select>
+    <textarea class="sr-exp" rows="1" placeholder="该步骤对应的预期结果，每行一条">${escapeHtml(exp)}</textarea>
+    <span class="sr-ops">
+      <button type="button" class="sr-up" title="上移步骤">↑</button>
+      <button type="button" class="sr-down" title="下移步骤">↓</button>
+      <button type="button" class="sr-del" title="删除此行">✕</button>
+    </span>`;
+  return div;
+}
+function updateRowNumbers(){
+  const rows = $$('#stepRows .step-row');
+  rows.forEach((r, i) => {
+    r.querySelector('.sr-num').textContent = i + 1;
+    const up = r.querySelector('.sr-up'), down = r.querySelector('.sr-down');
+    if (up) up.style.visibility = i === 0 ? 'hidden' : '';
+    if (down) down.style.visibility = i === rows.length - 1 ? 'hidden' : '';
+    r.querySelector('.sr-del').style.visibility = rows.length > 1 ? '' : 'hidden';
+  });
+}
+/* 上移/下移步骤行 */
+function moveStepRow(row, dir){
+  const rows = $$('#stepRows .step-row');
+  const idx = rows.indexOf(row);
+  const target = idx + dir;
+  if (target < 0 || target >= rows.length) return;
+  if (dir < 0) row.parentNode.insertBefore(row, rows[target]);
+  else row.parentNode.insertBefore(rows[target], row);
+  updateRowNumbers();
+  autoSave.mark();
+}
+function buildStepRows(c){
+  const stepLines = parseSteps(c?.steps || '');
+  const types = c?.stepTypes?.slice() || [];
+  const count = Math.max(stepLines.length, 1);
+  const expLists = splitExpected(c?.expected || '', count);
+  $('#stepRows').innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    $('#stepRows').appendChild(makeStepRow(i, stepLines[i]?.text || '', types[i] ?? 0, expLists[i].join('\n')));
+  }
+  updateRowNumbers();
+}
+function openDetail(id){
+  autoSave.flush();   // 先落盘上一个用例的未保存修改
+  ui.detailId = id || null;
+  const c = id ? store.get(id) : null;
+  $('#drawerTitle').textContent = c ? '编辑用例' : '新增用例';
+  $('#fTitle').value = c?.title || '';
+  $('#fModule').value = c?.module || '';
+  $('#fSmokePkg').value = c?.smokePkg || '';
+  $('#fSmokeAct').value = c?.smokeActivity || '';
+  $('#fSmokeSrc').value = c?.smokeSrc || '';
+  $('#fPriority').value = c?.priority || 'P0-High';
+  renderPrecondChips((c?.preconditions||'').split('\n').map(mapPrecondToEnum).filter(Boolean));
+  $('#fInSmoke').checked = c?.inSmoke || false;
+  $('#btnDelete').style.display = c ? '' : 'none';
+  buildStepRows(c);
+  $('#editMask').hidden = false;
+  $('#fTitle').focus();
+}
+function closeDetail(){
+  autoSave.flush();
+  $('#editMask').hidden = true;
+  ui.detailId = null;
+}
+function collectForm(silent){
+  const title = $('#fTitle').value.trim();
+  if (!title) { if (!silent) toast('标题不能为空', 'error'); return null; }
+  const rows = $$('#stepRows .step-row').filter(r => r.querySelector('.sr-text').value.trim());
+  if (!rows.length) { if (!silent) toast('至少填写一步', 'error'); return null; }
+  return {
+    title,
+    module: $('#fModule').value.trim(),
+    priority: $('#fPriority').value,
+    preconditions: $$('#precondChips .precond-chip.selected').map(c => c.dataset.p).join('\n'),
+    steps: rows.map(r => r.querySelector('.sr-text').value.trim()).join('\n'),
+    stepTypes: rows.map(r => Number(r.querySelector('.sr-type').value)),
+    expected: mergeExpected(rows.map(r => splitExpected(r.querySelector('.sr-exp').value, 1)[0])),
+    inSmoke: $('#fInSmoke').checked,
+    smokePkg: $('#fSmokePkg').value.trim(),
+    smokeActivity: $('#fSmokeAct').value.trim(),
+    smokeSrc: $('#fSmokeSrc').value.trim()
+  };
+}
+/* 自动保存：编辑即落盘，无需逐条点击「保存」。
+   校验通过才保存；标题/步骤不完整时静默等待，不打断输入。 */
+const autoSave = {
+  dirty:false, timer:null,
+  mark(){ this.dirty = true; this.schedule(); },
+  schedule(){
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.flush(), 600);
+  },
+  flush(){
+    clearTimeout(this.timer);
+    if (!this.dirty) return;
+    this.dirty = false;
+    const data = collectForm(true);
+    if (!data) return;
+    if (ui.detailId) store.patch(ui.detailId, data);
+    else { const c = store.add(data); ui.detailId = c.id; }   // 新增：首次有效输入即创建并转入编辑
+    showAutoSavedAt();
+  }
+};
+function showAutoSavedAt(){
+  const el = $('#autosaveHint');
+  if (!el) return;
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  el.textContent = `已自动保存 ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  el.classList.add('show','ok');
+  clearTimeout(showAutoSavedAt._t);
+  showAutoSavedAt._t = setTimeout(() => el.classList.remove('ok'), 1500);
+}
+function saveForm(){
+  clearTimeout(autoSave.timer);
+  autoSave.dirty = false;
+  const data = collectForm();
+  if (!data) return;
+  if (ui.detailId) { store.patch(ui.detailId, data); toast('已保存', 'success'); }
+  else { store.add(data); toast('已新增', 'success'); }
+  closeDetail();
+}
+
+/* ========== 6. aatf Markdown 导出 ========== */
+function sanitizeFileName(s){
+  let name = String(s).replace(/^\s*\d+[、.]\s*/, '');          // 去 "01、" 编号
+  name = name.replace(/[\\/:*?"<>|\n\r\t]/g, '');                 // 去非法字符
+  name = name.replace(/[、。，；：！？·\s-]+/g, '_');              // 标点/空格 → _
+  name = name.replace(/_+/g, '_').replace(/^_|_$/g, '');
+  return name || 'case';
+}
+/* 剥离行首编号（"1、" / "1." / "1.2、" 等，含重复导入叠出的多层编号），
+   循环剥离直到稳定，保证导出编号不随往返次数增加。要求数字后紧跟分隔符，
+   避免误伤 "10s超时" 这类以数字开头的正文 */
+function stripLeadNum(t){
+  let s = String(t);
+  while (/^\s*\d+(?:\.\d+)?\s*[、.．]\s*/.test(s)) s = s.replace(/^\s*\d+(?:\.\d+)?\s*[、.．]\s*/, '');
+  return s.trim();
+}
+function moduleLeaf(module){
+  const segs = String(module||'').split('>').map(s=>s.trim()).filter(Boolean);
+  if (!segs.length) return { name:'未分类', dir:null };
+  let leaf = segs[segs.length-1];
+  let name = leaf.replace(/^-\s*/, '');
+  if (name === '设置' || (leaf.startsWith('-') && segs.length >= 2)) name = '设置';
+  return { name, leaf, segs };
+}
+function usedDirNumbers(){
+  const used = new Set();
+  Object.values(MODULE_DIRS).forEach(d => { const m = d.match(/^(\d+)/); if (m) used.add(Number(m[1])); });
+  Object.values(store.meta.moduleDirOverrides).forEach(d => { const m = d.match(/^(\d+)/); if (m) used.add(Number(m[1])); });
+  return used;
+}
+function suggestDirName(leaf){
+  // 中文 → 拼音太复杂，直接转小写英文 if ascii，否则用拼音首字母做提示（简单处理：保留中文转 ascii 失败给英文 fallback）
+  const map = { '相机':'camera','设置':'settings','朋友圈':'circle_friends','天气':'weather','心率':'heart_rate','血氧':'blood_oxygen','闹钟':'alarm','相册':'album','短信':'sms','电话':'phone','日历':'calendar','运动':'sports','健康':'health','应用商店':'app_store','应用中心':'app_center','OTA':'ota','表盘':'watch_face','小爱同学':'xiaomi_ai','背单词':'vocabulary','课程表':'timetable','日历':'calendar','支付宝':'alipay','日程提醒':'reminder','消息':'message','联系人':'contacts','聊天':'chat','群聊':'group_chat','朋友圈':'moments','设置':'settings' };
+  const base = leaf.replace(/^-\s*/, '');
+  if (map[base]) return map[base];
+  return 'module';
+}
+function moduleToDir(module, overrides){
+  const { name, leaf, segs } = moduleLeaf(module);
+  // 1. 用户覆盖
+  if (overrides[name]) return { dir: overrides[name], name };
+  // 2. 内置映射
+  for (const [k, dir] of Object.entries(MODULE_DIRS)) {
+    if (name.includes(k) || leaf.includes(k)) return { dir, name };
+  }
+  // 3. 自动分配
+  const used = usedDirNumbers();
+  let nn = 1;
+  while (used.has(nn)) nn++;
+  const dir = String(nn).padStart(2,'0') + '_' + suggestDirName(name);
+  return { dir, name, auto:true };
+}
+function buildAatfMd(c, opts){
+  const lines = [];
+  // 首行机器可读标记（与 /gen-smoke-test 产物同款，供 /run-smoke-test 扫描执行）
+  const mod = opts.moduleName || moduleLeaf(c.module).name || '未分类';
+  const pkg = c.smokePkg || '-';
+  const act = c.smokeActivity || '-';
+  const src = c.smokeSrc || '-';
+  lines.push(`<!--smoke-test module="${mod}" package="${pkg}" activity="${act}" src="${src}"-->`);
+  lines.push('');
+  lines.push(`# ${opts.number}、${c.title}`);
+  lines.push('');
+  lines.push(`**模块**：${opts.moduleName}`);
+  lines.push(`**优先级**：${c.priority}`);
+  lines.push(`**前置条件**：${c.preconditions || '无'}`);
+  lines.push('');
+  lines.push('## 测试步骤');
+  const steps = parseSteps(c.steps);
+  const types = (c.stepTypes||[]).slice(0, steps.length);
+  steps.forEach((l, i) => {
+    const w = TYPE_WORDS[types[i]] || 'action';
+    lines.push(`${i+1}. **${l.text}** — ${w}`);
+  });
+  if (!steps.length) lines.push('1. **（待补充）** — action');
+  lines.push('');
+  lines.push('## 预期结果');
+  const exps = String(c.expected||'').split('\n').map(stripLeadNum).filter(l => l);
+  if (exps.length) exps.forEach((l, i) => lines.push(`${i+1}. ${l}`));
+  else lines.push('1. （待补充）');
+  if (opts.withScript) {
+    lines.push('');
+    lines.push('## 自动化脚本');
+    lines.push(`- **脚本路径**：\`flows/${opts.dir}/${opts.fileName}.yaml\``);
+    lines.push('- **录制原件**：待录制');
+    lines.push('- **Maestro 运行结果**：待执行');
+  }
+  return lines.join('\n') + '\n';
+}
+function showExportDialog(cases, opts = {}){
+  const isBatch = cases.length > 1;
+  const c = cases[0];
+  const firstMap = moduleToDir(c.module, store.meta.moduleDirOverrides);
+  let fileVal = sanitizeFileName(c.title);
+  let dirVal = firstMap.dir;
+  let nameVal = firstMap.name;
+  let numVal = '';
+  let withScript = true;
+  // 指出勾选：统计当前列表内的勾选数 / 冒烟数，作为导出范围
+  const selIds = ui.selected;
+  const countSel = cases.filter(x => selIds.has(x.id)).length;
+  const countSmoke = cases.filter(x => x.inSmoke).length;
+  let scope = opts.forceSmoke ? 'smoke' : (countSel > 0 ? 'selected' : 'all');
+  const effectiveList = () => {
+    if (scope === 'selected') return cases.filter(x => selIds.has(x.id));
+    if (scope === 'smoke') return cases.filter(x => x.inSmoke);
+    return cases;
+  };
+
+  const root = $('#modalRoot');
+  const renderPreview = () => {
+    const dir = dirVal || 'NN_unknown';
+    $('#exportPreview').textContent = buildAatfMd(
+      { ...c, title: c.title },
+      { number: numVal || '01', moduleName: nameVal || '未分类', dir, fileName: fileVal || 'case', withScript }
+    );
+  };
+  const renderScopePreview = () => {
+    const list = effectiveList();
+    const nums = buildNumMap();
+    $('#expCount').textContent = `本次将导出 ${list.length} 条`;
+    $('#expScopeTable').innerHTML = list.slice(0, 60).map(x => `
+      <tr>
+        <td class="c-num">${nums[x.id]||''}</td>
+        <td>${escapeHtml(x.title)}</td>
+        <td>${escapeHtml(moduleLeaf(x.module).name)}</td>
+        <td><span class="badge ${PRIO_CLASS[x.priority] || 'badge-p2'}">${escapeHtml(x.priority)}</span></td>
+        <td>${selIds.has(x.id) ? '☑' : '☐'}</td>
+        <td>${x.inSmoke ? '<span class="badge badge-smoke">✓</span>' : '<span class="badge badge-nosmoke">○</span>'}</td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary)">该范围内没有用例</td></tr>';
+  };
+  root.innerHTML = `
+    <div class="modal-mask">
+      <div class="modal">
+        <div class="modal-head"><h3>${isBatch ? `导出 aatf Markdown（${cases.length} 条）` : '导出 aatf Markdown'}</h3></div>
+        <div class="modal-body">
+          ${isBatch ? `
+          <p class="exp-note">当前列表 <b>${cases.length}</b> 条 · 已勾选 <b>${countSel}</b> 条 · 冒烟集合 <b>${countSmoke}</b> 条，请选择导出范围：</p>
+          <div class="exp-scope">
+            <label><input type="radio" name="expScope" value="all" ${scope==='all'?'checked':''}> 全部（${cases.length}）</label>
+            <label class="${countSel ? '' : 'disabled'}"><input type="radio" name="expScope" value="selected" ${countSel ? '' : 'disabled'} ${scope==='selected'?'checked':''}> 仅勾选（${countSel}）</label>
+            <label class="${countSmoke ? '' : 'disabled'}"><input type="radio" name="expScope" value="smoke" ${countSmoke ? '' : 'disabled'} ${scope==='smoke'?'checked':''}> 仅冒烟（${countSmoke}）</label>
+          </div>
+          <div class="exp-note" id="expCount" style="font-weight:600;color:var(--primary)"></div>
+          <div class="import-preview" style="max-height:220px;overflow-y:auto">
+            <table><thead><tr><th>编号</th><th>用例标题</th><th>模块</th><th>优先级</th><th>勾选</th><th>冒烟</th></tr></thead>
+            <tbody id="expScopeTable"></tbody></table>
+          </div>
+          <p style="color:var(--text-secondary);font-size:13px;margin-top:8px">批量导出：打包为 zip（结构 testcases/&lt;大模块目录&gt;/&lt;文件名&gt;.md，编号按大模块内顺序 01、02…），离线时逐文件下载。</p>`
+          : `
+          <div class="export-grid">
+            <div><label>文件名（不含 .md）</label><input type="text" id="exFile" value="${escapeHtml(fileVal)}"></div>
+            <div><label>模块目录 NN_xxx</label><input type="text" id="exDir" value="${escapeHtml(dirVal)}"></div>
+            <div><label>模块中文名</label><input type="text" id="exName" value="${escapeHtml(nameVal)}"></div>
+            <div><label>编号（如 01）</label><input type="text" id="exNum" value="${escapeHtml(numVal)}" placeholder="01"></div>
+          </div>
+          <div class="checkbox-inline" style="margin-top:10px"><input type="checkbox" id="exScript" checked> 包含「自动化脚本」段</div>
+          <div class="md-preview" id="exportPreview"></div>`}
+        </div>
+        <div class="modal-foot">
+          <button class="btn" data-act="cancel">取消</button>
+          <button class="btn btn-primary" data-act="export">导出</button>
+        </div>
+      </div>
+    </div>`;
+  if (!isBatch) {
+    const upd = () => {
+      fileVal = $('#exFile').value.trim();
+      dirVal = $('#exDir').value.trim();
+      nameVal = $('#exName').value.trim();
+      numVal = $('#exNum').value.trim();
+      withScript = $('#exScript').checked;
+      renderPreview();
+    };
+    ['exFile','exDir','exName','exNum'].forEach(id => $('#'+id).addEventListener('input', upd));
+    $('#exScript').addEventListener('change', upd);
+    renderPreview();
+  } else {
+    $$('input[name=expScope]', root).forEach(r => r.addEventListener('change', () => {
+      scope = $('input[name=expScope]:checked').value;
+      renderScopePreview();
+    }));
+    renderScopePreview();
+  }
+  const mask = $('.modal-mask', root);
+  mask.addEventListener('click', e => { if (e.target === mask) root.innerHTML=''; });
+  $$('button', root).forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.act === 'cancel') { root.innerHTML=''; return; }
+    // export
+    const remember = !isBatch;
+    const dir = dirVal || 'NN_unknown';
+    const name = nameVal || '未分类';
+    // 记住映射
+    if (remember) {
+      store.meta.moduleDirOverrides = store.meta.moduleDirOverrides || {};
+      store.meta.moduleDirOverrides[name] = dir;
+      store.save(true, true);
+    }
+    if (isBatch) {
+      const list = effectiveList();
+      if (!list.length) { toast('该导出范围下没有用例', 'warn'); return; }
+      // zip 或逐文件
+      if (typeof JSZip !== 'undefined') {
+        const zip = new JSZip();
+        const usedNames = {};
+        const numByDir = {};
+        list.forEach(c => {
+          const m = moduleToDir(c.module, store.meta.moduleDirOverrides);
+          const fname = sanitizeFileName(c.title);
+          let key = `${m.dir}/${fname}`;
+          usedNames[key] = (usedNames[key]||0) + 1;
+          if (usedNames[key] > 1) key = `${m.dir}/${fname}_${usedNames[key]}`;
+          numByDir[m.dir] = (numByDir[m.dir]||0) + 1;   // 编号按大模块内顺序
+          zip.file(`testcases/${key}.md`, buildAatfMd(c, { number:String(numByDir[m.dir]).padStart(2,'0'), moduleName:m.name, dir:m.dir, fileName:fname, withScript:true }));
+        });
+        zip.generateAsync({ type:'blob' }).then(blob => download('aatf_testcases.zip', blob, 'application/zip'));
+        toast(`已导出 ${list.length} 个用例（zip）`, 'success');
+      } else {
+        toast('JSZip 未加载（需联网），已改为逐文件下载', 'warn');
+        const numByDir = {};
+        list.forEach(c => {
+          const m = moduleToDir(c.module, store.meta.moduleDirOverrides);
+          const fname = sanitizeFileName(c.title);
+          numByDir[m.dir] = (numByDir[m.dir]||0) + 1;
+          download(`${fname}.md`, buildAatfMd(c, { number:String(numByDir[m.dir]).padStart(2,'0'), moduleName:m.name, dir:m.dir, fileName:fname, withScript:true }), 'text/markdown');
+        });
+        toast(`已逐文件下载 ${list.length} 个用例`, 'warn');
+      }
+    } else {
+      download(`${fileVal||'case'}.md`, buildAatfMd(c, { number:numVal||'01', moduleName:name, dir, fileName:fileVal||'case', withScript }), 'text/markdown');
+      toast('已导出 Markdown', 'success');
+    }
+    root.innerHTML='';
+  }));
+}
+
+/* ========== 6.5 gen-smoke-test Markdown 导入 ========== */
+/* 解析 /gen-smoke-test 产物（<大模块名>.md）：
+   - 首行可选标记 <!--smoke-test module="朋友圈" package=".." activity=".." src=".."-->
+   - 用例按 "# NN、用例名称" 一级标题切分，正文含「模块」「优先级」「前置条件」字段
+     、## 测试步骤（N. 步骤描述 — action）、## 预期结果（N. 描述）、## 自动化脚本（忽略）
+   - 大模块名优先级：标记 module 属性 > 文件名（去 .md）> 用例的 **模块** 字段 */
+function mapPriority(p){
+  const s = String(p||'').toLowerCase();
+  if (s.includes('p0') || s === 'high') return 'P0-High';
+  if (s.includes('p1') || s === 'medium' || s === 'middle') return 'P1-Middle';
+  if (s.includes('p2') || s === 'low') return 'P2-Low';
+  return '';
+}
+function parseSmokeMd(text, fname){
+  const marker = text.match(/<!--smoke-test\s+([\s\S]*?)-->/);
+  const meta = { module:'', package:'', activity:'', src:'' };
+  if (marker) {
+    const attrs = {};
+    marker[1].replace(/(\w+)\s*=\s*"([^"]*)"/g, (_, k, v) => { attrs[k] = v; });
+    meta.module = String(attrs.module || '').trim();
+    meta.package = String(attrs.package || '').trim();
+    meta.activity = String(attrs.activity || '').trim();
+    meta.src = String(attrs.src || '').trim();
+  }
+  let bigModule = meta.module;
+  if (!bigModule) bigModule = String(fname||'').replace(/\.md$/i, '').trim();
+  const rawCases = [];
+  let cur = null;
+  String(text).split('\n').forEach(raw => {
+    const line = raw.replace(/\r$/, '');
+    const h = line.match(/^#\s+(.+?)\s*$/);
+    if (h) {
+      cur = { title:h[1].trim(), priority:'', fileModule:'', preconditions:'', steps:[], stepTypes:[], expected:[], section:'' };
+      // 标题内联优先级提示：# 01、浏览列表（P0 - 覆盖入口/...）→ 剥离括号并提取 P 级
+      const pm = cur.title.match(/（(P\d)(?:-\s*\w+)?[^）]*）\s*$/);
+      if (pm) { cur.priority = pm[1]; cur.title = cur.title.slice(0, pm.index).trim(); }
+      rawCases.push(cur);
+      return;
+    }
+    if (!cur) return;
+    const f = line.match(/^\*\*(模块|优先级|前置条件)\*\*\s*[:：]\s*(.*)$/);
+    if (f) {
+      if (f[1] === '模块') cur.fileModule = f[2].trim();
+      else if (f[1] === '优先级') cur.priority = f[2].trim();
+      else cur.preconditions = f[2].trim();
+      return;
+    }
+    const sec = line.match(/^##\s+(.+?)\s*$/);
+    if (sec) { cur.section = sec[1].trim(); return; }
+    if (!cur.section) return;
+    if (cur.section === '测试步骤') {
+      const st = line.match(/^\s*\d+\s*[.、．]\s*\*\*(.+?)\*\*\s*(?:—|-|–)?\s*(action|verify|setup)?\s*$/i);
+      if (st) {
+        cur.steps.push(st[1].trim());
+        cur.stepTypes.push(TYPE_ID[String(st[2]||'action').toLowerCase()] ?? 0);
+        return;
+      }
+      if (line.trim() && cur.steps.length) cur.steps[cur.steps.length-1] += ' ' + line.trim();  // 续行
+      return;
+    }
+    if (cur.section === '预期结果') {
+      // 保留行首步骤编号（N. / N、 / N.M、），供编辑模态按步骤一一配对预期；
+      // 之前用 stripLeadNum 剥掉了编号，导致所有预期都归属到第一个步骤
+      const t = line.trim();
+      if (t) cur.expected.push(t);
+      return;
+    }
+    // ## 自动化脚本 等其余小节忽略
+  });
+  if (!bigModule) bigModule = rawCases.find(c => c.fileModule)?.fileModule || '未分类';
+  const cases = [];
+  rawCases.forEach(c => {
+    const title = c.title.replace(/^\d+\s*[、.．]\s*/, '').trim();
+    if (!title) return;
+    cases.push({
+      title,
+      module: bigModule,                       // 按大模块组织用例结构
+      priority: mapPriority(c.priority) || 'P0-High',
+      preconditions: c.preconditions || '无',
+      steps: c.steps.join('\n'),
+      stepTypes: c.stepTypes,
+      expected: c.expected.join('\n'),
+      inSmoke: true,                           // 冒烟用例产物默认加入冒烟集合
+      smokePkg: meta.package,                  // 首行标记字段，导出时写回
+      smokeActivity: meta.activity,
+      smokeSrc: meta.src
+    });
+  });
+  return { bigModule, cases };
+}
+/* 统一导入预览（xlsx / gen-smoke-test md 共用）：提示重复数、选择追加/跳过/覆盖，批量一次保存 */
+function showImportPreview(parsed, groups){
+  if (!parsed.length) { toast('文件中没有可导入的用例', 'warn'); return; }
+  const dupCount = parsed.filter(p => store.cases.some(c => c.title === p.title && c.module === p.module)).length;
+  const root = $('#modalRoot');
+  const groupRows = (groups||[{ name:'', module:'', count:parsed.length }]).map(g => `
+    <tr><td>${escapeHtml(g.name)}</td><td>${escapeHtml(g.module)}</td><td>${g.count}</td></tr>`).join('');
+  root.innerHTML = `
+    <div class="modal-mask">
+      <div class="modal">
+        <div class="modal-head"><h3>导入预览</h3></div>
+        <div class="modal-body">
+          <p style="font-size:13.5px">将导入 <b>${parsed.length}</b> 条用例（同名同模块重复 <b>${dupCount}</b> 条）</p>
+          ${groups && groups.length > 1 ? `
+          <div class="import-preview" style="margin-top:10px">
+            <table><thead><tr><th>源文件</th><th>大模块</th><th>用例数</th></tr></thead>
+            <tbody>${groupRows}</tbody></table>
+          </div>` : ''}
+          <div class="radio-group">
+            <label><input type="radio" name="impMode" value="append" checked> 全部追加</label>
+            <label><input type="radio" name="impMode" value="skip"> 跳过重复</label>
+            <label><input type="radio" name="impMode" value="replace"> 覆盖同标题</label>
+          </div>
+          <div class="pri-count">markdown 导入的用例默认「加入冒烟集合」</div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" data-act="cancel">取消</button>
+          <button class="btn btn-primary" data-act="import">导入</button>
+        </div>
+      </div>
+    </div>`;
+  const mask = $('.modal-mask', root);
+  mask.addEventListener('click', e => { if (e.target===mask) root.innerHTML=''; });
+  $$('button', root).forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.act === 'cancel') { root.innerHTML=''; return; }
+    const mode = $('input[name=impMode]:checked').value;
+    let skipped = 0, replaced = 0;
+    const toAdd = [];
+    parsed.forEach(p => {
+      const existing = store.cases.find(c => c.title === p.title && c.module === p.module);
+      if (existing) {
+        if (mode === 'skip') { skipped++; return; }
+        if (mode === 'replace') { store.patch(existing.id, p); replaced++; return; }
+      }
+      toAdd.push(p);
+    });
+    if (toAdd.length) store.addMany(toAdd);   // 批量一次保存
+    root.innerHTML='';
+    toast(`导入完成：新增 ${toAdd.length}，覆盖 ${replaced}，跳过 ${skipped}`, 'success');
+  }));
+}
+function importSmokeMd(files){
+  let parsed = [], groups = [];
+  Promise.all(files.map(f => f.text())).then(texts => {
+    texts.forEach((t, i) => {
+      const r = parseSmokeMd(t, files[i].name);
+      groups.push({ name: files[i].name, module: r.bigModule, count: r.cases.length });
+      parsed = parsed.concat(r.cases);
+    });
+    showImportPreview(parsed, groups);
+  }).catch(() => toast('Markdown 文件读取失败', 'error'));
+}
+
+/* ========== 7. xlsx 导入导出 ========== */
+const xlsxReady = { loaded:false, error:null };
+const zipReady = { loaded:false, error:null };
+function bootstrapXlsx(retry=true){
+  if (window.XLSX) { xlsxReady.loaded = true; updateCdnBadge(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  s.onload = () => { xlsxReady.loaded = true; xlsxReady.error = null; updateCdnBadge(); };
+  s.onerror = () => {
+    if (retry) { setTimeout(() => bootstrapXlsx(false), 1500); return; }
+    xlsxReady.error = 'CDN 不可用';
+    updateCdnBadge();
+  };
+  document.head.appendChild(s);
+}
+/* JSZip：批量导出打 zip 用（否则退化为逐文件下载，浏览器逐个弹确认） */
+function bootstrapJsZip(retry=true){
+  if (window.JSZip) { zipReady.loaded = true; updateCdnBadge(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+  s.onload = () => { zipReady.loaded = true; zipReady.error = null; updateCdnBadge(); };
+  s.onerror = () => {
+    if (retry) { setTimeout(() => bootstrapJsZip(false), 1500); return; }
+    zipReady.error = 'CDN 不可用';
+    updateCdnBadge();
+  };
+  document.head.appendChild(s);
+}
+function updateCdnBadge(){
+  const b = $('#cdnBadge');
+  const x = xlsxReady.loaded ? '✓' : (xlsxReady.error ? '✗' : '…');
+  const z = zipReady.loaded ? '✓' : (zipReady.error ? '✗' : '…');
+  b.textContent = `xlsx ${x} · zip ${z}`;
+  b.title = `xlsx 解析库：${xlsxReady.loaded ? '已加载' : (xlsxReady.error || '加载中')}；JSZip（批量导出压缩）：${zipReady.loaded ? '已加载' : (zipReady.error || '加载中')}`;
+}
+function importXlsx(file){
+  if (!xlsxReady.loaded) { toast('xlsx 解析库未加载（需要联网），导入暂不可用', 'error'); return; }
+  file.arrayBuffer().then(buf => {
+    const wb = XLSX.read(buf, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+    if (!rows.length) { toast('文件中没有数据', 'error'); return; }
+    const parsed = rows.map(r => ({
+      title: String(r.Title || '').trim(),
+      module: String(r.Priority || '').trim(),
+      priority: String(r.Folder || 'P0-High').trim(),
+      preconditions: String(r.Preconditions || '').trim(),
+      steps: String(r.Steps || '').trim(),
+      expected: String(r['Expected Result'] || '').trim()
+    })).filter(c => c.title);
+    showImportPreview(parsed, null);
+  }).catch(() => toast('文件读取失败', 'error'));
+}
+function exportXlsx(cases, scopeNote){
+  if (!xlsxReady.loaded) { toast('xlsx 解析库未加载（需要联网），导出暂不可用', 'error'); return; }
+  const rows = cases.map(c => ({
+    Title: c.title,
+    Priority: c.module,
+    Folder: c.priority,
+    Preconditions: c.preconditions || '',
+    Steps: c.steps || '',
+    'Expected Result': c.expected || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows, { header: ['Title','Priority','Folder','Preconditions','Steps','Expected Result'] });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.writeFile(wb, '冒烟用例_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  toast(`已导出 ${cases.length} 条（${scopeNote||'全部'}）为 xlsx`, 'success');
+}
+
+/* ========== 8. 事件绑定 ========== */
+function bindEvents(){
+  // 搜索
+  $('#searchInput').addEventListener('input', debounce(e => { ui.keyword = e.target.value.trim(); renderAll(); }, 250));
+  $('#priorityFilter').addEventListener('change', e => { ui.priority = e.target.value; renderAll(); });
+  $('#smokeOnlyFilter').addEventListener('change', e => { ui.smokeOnly = e.target.checked; renderAll(); });
+
+  // 表格（事件委托）
+  $('#caseBody').addEventListener('click', e => {
+    const actBtn = e.target.closest('button[data-act]');
+    const smokeCell = e.target.closest('[data-smoke]');
+    const checkbox = e.target.closest('.row-check');
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const id = tr.dataset.id;
+    if (actBtn) {
+      e.stopPropagation();
+      const act = actBtn.dataset.act;
+      if (act === 'edit') openDetail(id);
+      else if (act === 'duplicate') { store.duplicate(id); toast('已复制', 'success'); }
+      else if (act === 'del') {
+        const c = store.get(id);
+        confirmDialog({ title:'删除用例', message:`确定删除「${escapeHtml(c?.title||'')}」？此操作不可撤销。`, okText:'删除', danger:true }).then(ok => {
+          if (ok) { store.remove([id]); ui.selected.delete(id); toast('已删除', 'success'); }
+        });
+      }
+      return;
+    }
+    if (smokeCell) {
+      e.stopPropagation();
+      const c = store.get(id);
+      if (c) { store.setSmoke([id], !c.inSmoke); }
+      return;
+    }
+    if (checkbox) {
+      e.stopPropagation();
+      checkbox.checked ? ui.selected.add(id) : ui.selected.delete(id);
+      tr.classList.toggle('selected', checkbox.checked);
+      syncBulkBar();
+      syncCheckAll(store.filter({keyword:ui.keyword, priority:ui.priority, module:ui.module, smokeOnly:ui.smokeOnly}));
+      return;
+    }
+    openDetail(id);
+  });
+  $('#checkAll').addEventListener('change', e => {
+    const list = store.filter({keyword:ui.keyword, priority:ui.priority, module:ui.module, smokeOnly:ui.smokeOnly});
+    if (e.target.checked) list.forEach(c => ui.selected.add(c.id));
+    else list.forEach(c => ui.selected.delete(c.id));
+    renderAll();
+  });
+
+  // 批量
+  $('#bulkToSmoke').addEventListener('click', () => { store.setSmoke([...ui.selected], true); ui.selected.clear(); renderAll(); toast('已加入冒烟集合', 'success'); });
+  $('#bulkUnsmoke').addEventListener('click', () => { store.setSmoke([...ui.selected], false); ui.selected.clear(); renderAll(); toast('已移出冒烟集合', 'success'); });
+  $('#bulkDelete').addEventListener('click', () => {
+    confirmDialog({ title:'批量删除', message:`确定删除选中的 <b>${ui.selected.size}</b> 条用例？`, okText:'删除', danger:true }).then(ok => {
+      if (ok) { store.remove([...ui.selected]); ui.selected.clear(); renderAll(); toast('已删除', 'success'); }
+    });
+  });
+  $('#bulkClear').addEventListener('click', () => { ui.selected.clear(); renderAll(); });
+
+  // 侧栏
+  $('#prioBars').addEventListener('click', e => {
+    const row = e.target.closest('[data-prio]');
+    if (!row) return;
+    ui.priority = ui.priority === row.dataset.prio ? '' : row.dataset.prio;
+    $('#priorityFilter').value = ui.priority;
+    renderAll();
+  });
+  $('#moduleTop').addEventListener('click', e => {
+    const row = e.target.closest('[data-module]');
+    if (!row) return;
+    const segs = row.dataset.module.split(' > ');
+    ui.module = segs.length > 1 ? segs.slice(0,2).join(' > ') : row.dataset.module;
+    renderAll();
+  });
+  $('#moduleTree').addEventListener('click', e => {
+    const item = e.target.closest('.tree-item');
+    if (!item) return;
+    const m = item.dataset.module;
+    if (m === '__all__') { ui.module = ''; renderAll(); return; }
+    if (e.target.classList.contains('tw')) {
+      // 折叠切换
+      const key = m;
+      ui.collapsed.has(key) ? ui.collapsed.delete(key) : ui.collapsed.add(key);
+      renderModuleTree();
+      return;
+    }
+    ui.module = ui.module === m ? '' : m;
+    renderAll();
+  });
+
+  // 编辑模态
+  $('#btnAdd').addEventListener('click', () => openDetail(null));
+  $('#detailClose').addEventListener('click', closeDetail);
+  $('#editMask').addEventListener('click', e => { if (e.target === e.currentTarget) closeDetail(); });
+  $('#btnCancel').addEventListener('click', closeDetail);
+  $('#btnSave').addEventListener('click', saveForm);
+  // 自动保存：编辑即落盘，无需逐条点击「保存」（防抖 600ms，关闭/切换时强制落盘）
+  $('#caseForm').addEventListener('input', () => autoSave.mark());
+  $('#caseForm').addEventListener('change', () => autoSave.mark());
+  $('#btnDuplicate').addEventListener('click', () => {
+    const data = collectForm();
+    if (!data) return;
+    if (ui.detailId) store.patch(ui.detailId, data);
+    const c = store.duplicate(ui.detailId || store.cases[0]?.id);
+    if (c) { openDetail(c.id); toast('已复制，正在编辑副本', 'success'); }
+  });
+  $('#btnDelete').addEventListener('click', () => {
+    if (!ui.detailId) return;
+    const c = store.get(ui.detailId);
+    confirmDialog({ title:'删除用例', message:`确定删除「${escapeHtml(c?.title||'')}」？`, okText:'删除', danger:true }).then(ok => {
+      if (ok) { store.remove([ui.detailId]); ui.selected.delete(ui.detailId); closeDetail(); toast('已删除', 'success'); }
+    });
+  });
+  // 前置条件 chips 选择（只能选择，不可自由输入）
+  $('#precondChips').addEventListener('click', e => {
+    const chip = e.target.closest('.precond-chip');
+    if (!chip) return;
+    const p = chip.dataset.p;
+    const selected = $$('#precondChips .precond-chip.selected');
+    if (p === '无') {
+      // 「无」为单选：选中则清空其他
+      if (!chip.classList.contains('selected')) selected.forEach(c => c.classList.remove('selected'));
+      chip.classList.toggle('selected');
+    } else {
+      chip.classList.toggle('selected');
+      // 选了其他条件时取消「无」
+      const none = $('#precondChips .precond-chip[data-p="无"]');
+      if (none) none.classList.remove('selected');
+    }
+    autoSave.mark();
+  });
+  // 步骤行：添加 / 删除 / 自动标注
+  $('#addStepRow').addEventListener('click', () => {
+    $('#stepRows').appendChild(makeStepRow($$('#stepRows .step-row').length, '', 0, ''));
+    updateRowNumbers();
+    autoSave.mark();
+  });
+  $('#stepRows').addEventListener('click', e => {
+    const up = e.target.closest('.sr-up');
+    const down = e.target.closest('.sr-down');
+    const del = e.target.closest('.sr-del');
+    if (up || down) {
+      moveStepRow((up || down).closest('.step-row'), up ? -1 : 1);
+      return;
+    }
+    if (!del) return;
+    const rows = $$('#stepRows .step-row');
+    if (rows.length <= 1) { toast('至少保留一步', 'warn'); return; }
+    del.closest('.step-row').remove();
+    updateRowNumbers();
+    autoSave.mark();
+  });
+  $('#autoTagBtn').addEventListener('click', () => {
+    const texts = $$('#stepRows .sr-text').map(i => i.value.trim()).filter(Boolean);
+    if (!texts.length) { toast('请先填写步骤', 'warn'); return; }
+    const tags = autoTagSteps(texts.map(t => ({ text: t })));
+    $$('#stepRows .step-row').forEach((r, i) => {
+      const sel = r.querySelector('.sr-type');
+      if (sel && tags[i] !== undefined) sel.value = String(tags[i]);
+    });
+    autoSave.mark();
+    toast('已按启发式自动标注（可手动调整）', 'success');
+  });
+  // Esc 关闭编辑模态
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#editMask').hidden) closeDetail(); });
+
+  // 主题
+  $('#btnTheme').addEventListener('click', () => {
+    const cur = document.documentElement.dataset.theme;
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    store.meta.theme = next;
+    store.save(true, true);
+    $('#btnTheme').textContent = next === 'dark' ? '☀' : '☾';
+  });
+
+  // 导入导出
+  $('#btnImport').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.md,.xlsx,.xls';
+    input.multiple = true;
+    input.onchange = () => {
+      const files = [...input.files];
+      if (!files.length) return;
+      const mds = files.filter(f => /\.md$/i.test(f.name));
+      const xlsxFiles = files.filter(f => !/\.md$/i.test(f.name));
+      if (mds.length) importSmokeMd(mds);                 // /gen-smoke-test 产物（可多选，按大模块组织）
+      if (xlsxFiles.length) importXlsx(xlsxFiles[0]);
+    };
+    input.click();
+  });
+  $('#btnExportXlsx').addEventListener('click', () => {
+    let list, note;
+    if (ui.selected.size) { list = store.cases.filter(c => ui.selected.has(c.id)); note = '已勾选'; }
+    else if (ui.smokeOnly) { list = store.cases.filter(c=>c.inSmoke); note = '冒烟集合'; }
+    else { list = store.cases; note = '全部'; }
+    if (!list.length) { toast('没有可导出的用例', 'warn'); return; }
+    exportXlsx(list, note);
+  });
+  $('#btnExportAatf').addEventListener('click', () => {
+    const list = ui.smokeOnly ? store.cases.filter(c=>c.inSmoke) : store.filter({keyword:ui.keyword, priority:ui.priority, module:ui.module});
+    if (!list.length) { toast('没有可导出的用例', 'warn'); return; }
+    showExportDialog(list);   // 对话框内可选择范围：全部 / 仅勾选 / 仅冒烟
+  });
+  // 导出冒烟集合（仅 inSmoke=true，不受当前筛选影响）
+  $('#btnExportSmoke').addEventListener('click', () => {
+    const list = store.cases.filter(c => c.inSmoke);
+    if (!list.length) { toast('冒烟集合为空：先勾选用例加入冒烟集合', 'warn'); return; }
+    showExportDialog(list, { forceSmoke:true });
+  });
+
+  // 空态重导入
+  $('#btnReseed').addEventListener('click', () => {
+    confirmDialog({ title:'重新导入种子数据', message:'将覆盖当前全部用例（272 条样本），确定？', okText:'导入', danger:true }).then(ok => {
+      if (ok) {
+        store.meta.seedVersion = 0;
+        store.meta.moduleDirOverrides = {};
+        store.cases = [];
+        store.seedIfNeeded();
+        renderAll();
+        toast('已重新导入种子数据', 'success');
+      }
+    });
+  });
+
+
+}
+
+/* ========== 9. 启动 ========== */
+function init(){
+  store.load();
+  if (document.documentElement.dataset.theme === 'dark') $('#btnTheme').textContent = '☀';
+  else $('#btnTheme').textContent = '☾';
+  bootstrapXlsx();
+  bootstrapJsZip();
+  bindEvents();
+  store.onChange(renderAll);
+  renderAll();
+  // 远程同步（异步，不阻塞渲染；服务器优先，失败降级离线）
+  store.initRemote().then(r => {
+    if (r === 'synced') { renderAll(); toast('已从服务器加载用例', 'success'); }
+    else if (r === 'uploaded') { renderAll(); toast('服务器暂无数据，已上传本地用例', 'success'); }
+    else if (r === 'offline') { toast('服务器不可达，当前为离线模式（数据仅在本机浏览器）', 'warn'); }
+  });
+}
+init();
+})();
+</script>
+</body>
+</html>

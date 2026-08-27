@@ -1,0 +1,14 @@
+{
+  "name": "smoke-ui",
+  "version": "1.0.0",
+  "description": "冒烟测试用例管理（AATF）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
