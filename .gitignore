@@ -4,6 +4,9 @@ cases.json.bak
 cases.json.tmp
 cases-backup-*.json
 
+# 上传的测试报告（run-smoke-test 回传，运行时生成）
+reports/
+
 # 本地工具产物
 .dsh-vision-router/
 
